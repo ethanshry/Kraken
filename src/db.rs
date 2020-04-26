@@ -65,11 +65,8 @@ impl Database {
     pub fn get_nodes(&self) -> Option<Vec<Node>> {
         let mut res = vec![];
 
-        println!("{}", self.nodes.iter().len());
-
-        for (k, v) in self.nodes.iter() {
+        for (_, v) in self.nodes.iter() {
             res.push(v.clone());
-            println!("{}", k);
         }
 
         match res.len() {
