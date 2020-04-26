@@ -29,17 +29,7 @@ impl Database {
 
         services.insert("test".to_owned(), test_services);
 
-        let test_node = Node::new(
-            "test",
-            "EthanShryDesktop",
-            1.0,
-            16,
-            256,
-            2.0,
-            32,
-            512,
-            false,
-        );
+        let test_node = Node::new("test", "EthanShryDesktop", 0, 0, 0, 0.0, false);
 
         nodes.insert("test".to_owned(), test_node);
 
@@ -68,6 +58,23 @@ impl Database {
     }
 
     pub fn insert_node(&mut self, node_id: &str, node: Node) -> Option<Node> {
+        println!("inserting {}", node_id);
         self.nodes.insert(node_id.to_owned(), node)
+    }
+
+    pub fn get_nodes(&self) -> Option<Vec<Node>> {
+        let mut res = vec![];
+
+        println!("{}", self.nodes.iter().len());
+
+        for (k, v) in self.nodes.iter() {
+            res.push(v.clone());
+            println!("{}", k);
+        }
+
+        match res.len() {
+            0 => None,
+            _ => Some(res),
+        }
     }
 }

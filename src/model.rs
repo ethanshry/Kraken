@@ -30,12 +30,10 @@ impl Service {
 pub struct Node {
     pub id: String,
     pub model: String,
-    current_cpu: f32,
-    current_ram: u64,
-    current_disk: u64,
-    max_cpu: f32,
-    max_ram: u64,
-    max_disk: u64,
+    uptime: u64,
+    ram_free: u64,
+    ram_used: u64,
+    load_avg_5: f32,
     pub application_instances: bool,
     services: Vec<Service>,
 }
@@ -45,12 +43,10 @@ impl Clone for Node {
         let mut node = Node {
             id: self.id.to_owned(),
             model: self.model.to_owned(),
-            current_cpu: self.current_cpu,
-            current_disk: self.current_disk,
-            current_ram: self.current_ram,
-            max_cpu: self.max_cpu,
-            max_ram: self.max_ram,
-            max_disk: self.max_disk,
+            ram_free: self.ram_free,
+            ram_used: self.ram_used,
+            load_avg_5: self.load_avg_5,
+            uptime: self.uptime,
             application_instances: self.application_instances,
             services: Vec::new(),
         };
@@ -67,43 +63,61 @@ impl Node {
     pub fn new(
         id: &str,
         model: &str,
-        current_cpu: f32,
-        current_disk: u64,
-        current_ram: u64,
-        max_cpu: f32,
-        max_ram: u64,
-        max_disk: u64,
+        uptime: u64,
+        ram_free: u64,
+        ram_used: u64,
+        load_avg_5: f32,
         application_instances: bool,
     ) -> Node {
         Node {
             id: id.to_owned(),
             model: model.to_owned(),
-            current_cpu,
-            current_disk,
-            current_ram,
-            max_cpu,
-            max_ram,
-            max_disk,
+            uptime,
+            ram_free,
+            ram_used,
+            load_avg_5,
             application_instances,
             services: vec![],
         }
     }
 
-    pub fn current_cpu_percent(&self) -> f64 {
-        (self.current_cpu / self.max_cpu) as f64
+    pub fn uptime(&self) -> u64 {
+        self.uptime
+    }
+
+    pub fn ram_free(&self) -> u64 {
+        self.ram_free
+    }
+
+    pub fn ram_used(&self) -> u64 {
+        self.ram_used
+    }
+
+    pub fn load_avg_5(&self) -> f32 {
+        self.load_avg_5
     }
 
     pub fn current_ram_percent(&self) -> f64 {
-        (self.current_ram / self.max_ram) as f64
+        ((self.ram_used as f64) / ((self.ram_free as f64) + (self.ram_used as f64))) as f64
     }
 
-    pub fn current_disk_percent(&self) -> f64 {
-        (self.current_disk / self.max_disk) as f64
+    pub fn update(&mut self, ram_free: &str, ram_used: &str, uptime: &str, load_avg_5: &str) -> () {
+        self.ram_free = ram_free.parse::<u64>().unwrap();
+        self.ram_used = ram_used.parse::<u64>().unwrap();
+        self.uptime = uptime.parse::<u64>().unwrap();
+        self.load_avg_5 = load_avg_5.parse::<f32>().unwrap();
     }
 
-    pub fn set_disk_ram_cpu(&mut self, cpu: f32, ram: u64, disk: u64) -> () {
-        self.current_cpu = cpu;
-        self.current_disk = disk;
-        self.current_ram = ram;
+    pub fn from_msg(data: &Vec<String>) -> Node {
+        Node {
+            id: data.get(0).unwrap().clone(),
+            model: "custom-pc".to_owned(),
+            uptime: data.get(1).unwrap().parse::<u64>().unwrap(),
+            ram_free: data.get(2).unwrap().parse::<u64>().unwrap(),
+            ram_used: data.get(3).unwrap().parse::<u64>().unwrap(),
+            load_avg_5: data.get(4).unwrap().parse::<f32>().unwrap(),
+            application_instances: false,
+            services: vec![],
+        }
     }
 }

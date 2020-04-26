@@ -17,16 +17,24 @@ impl Node {
         self.model.as_str()
     }
 
-    fn current_cpu_percent(&self) -> f64 {
-        self.current_cpu_percent()
+    pub fn uptime(&self) -> i32 {
+        self.uptime() as i32
+    }
+
+    pub fn ram_free(&self) -> i32 {
+        self.ram_free() as i32
+    }
+
+    pub fn ram_used(&self) -> i32 {
+        self.ram_used() as i32
+    }
+
+    pub fn load_avg_5(&self) -> f64 {
+        self.load_avg_5() as f64
     }
 
     fn current_ram_percent(&self) -> f64 {
         self.current_ram_percent()
-    }
-
-    fn current_disk_percent(&self) -> f64 {
-        self.current_disk_percent()
     }
 
     fn application_instances(&self) -> bool {
@@ -53,6 +61,13 @@ impl Query {
     fn get_node(context: &Database, node_id: String) -> FieldResult<Option<&Node>> {
         //let res = context.db.lock().unwrap().get_node(&node_id);
         let res = context.get_node(&node_id);
+        // Return the result.
+        Ok(res)
+    }
+
+    fn get_nodes(context: &Database) -> FieldResult<Option<Vec<Node>>> {
+        //let res = context.db.lock().unwrap().get_node(&node_id);
+        let res = context.get_nodes();
         // Return the result.
         Ok(res)
     }
