@@ -21,7 +21,17 @@ use db::{Database, ManagedDatabase};
 use rabbit::{RabbitBroker, RabbitMessage, SysinfoMessage};
 use schema::Query;
 
+// TODO parse TOML
+// https://docs.rs/toml/0.5.6/toml/
+
+// TODO make reqwest
+// https://rust-lang-nursery.github.io/rust-cookbook/web/clients/apis.html
+// https://crates.io/crates/reqwest
+
 fn main() {
+    // TODO get sysinfo from platform.toml
+    // TODO pull static site from git and put in static folder
+
     // get uuid for system, or create one
     let uuid;
     match fs::read_to_string("id.txt") {
@@ -39,6 +49,7 @@ fn main() {
 
     let db_ref = Arc::new(Mutex::new(db));
 
+    // Thread to post sysinfo every 5 seconds
     let system_status_proc;
     {
         let arc = db_ref.clone();
@@ -72,6 +83,7 @@ fn main() {
         });
     }
 
+    // Thread to consume sysinfo queue
     let rabbit_consumer_proc;
     {
         let arc = db_ref.clone();
@@ -119,6 +131,7 @@ fn main() {
         });
     }
 
+    // launch the API server
     rocket::ignite()
         .manage(ManagedDatabase::new(db_ref.clone()))
         .manage(routes::Schema::new(Query, EmptyMutation::<Database>::new()))
@@ -128,7 +141,8 @@ fn main() {
                 routes::root,
                 routes::graphiql,
                 routes::get_graphql_handler,
-                routes::post_graphql_handler
+                routes::post_graphql_handler,
+                routes::site
             ],
         )
         .launch();

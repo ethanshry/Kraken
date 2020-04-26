@@ -1,5 +1,5 @@
-use crate::db::{Database, ManagedDatabase};
-use crate::model::{Node, Service, ServiceStatus};
+use crate::db::Database;
+use crate::model::{Node, Service};
 use juniper::FieldResult;
 
 impl juniper::Context for Database {}
@@ -29,6 +29,7 @@ impl Node {
         self.ram_used() as i32
     }
 
+    /// Five minute load average (<1 indicated processes are not waiting for resources)
     pub fn load_avg_5(&self) -> f64 {
         self.load_avg_5() as f64
     }
@@ -42,7 +43,6 @@ impl Node {
     }
 
     fn services(&self, context: &Database) -> Option<&Vec<Service>> {
-        //context.db.lock().unwrap().get_services(&self.id)
         context.get_services(&self.id)
     }
 }
@@ -51,6 +51,7 @@ pub struct Query;
 
 #[juniper::object(Context = Database)]
 impl Query {
+    // Get a list of services installed on a specific node
     fn get_services(context: &Database, node_id: String) -> FieldResult<Option<&Vec<Service>>> {
         //let res = context.db.lock().unwrap().get_services(&node_id);
         let res = context.get_services(&node_id);
@@ -58,6 +59,7 @@ impl Query {
         Ok(res)
     }
 
+    /// Get information for a specific node on the platform
     fn get_node(context: &Database, node_id: String) -> FieldResult<Option<&Node>> {
         //let res = context.db.lock().unwrap().get_node(&node_id);
         let res = context.get_node(&node_id);
@@ -65,6 +67,7 @@ impl Query {
         Ok(res)
     }
 
+    /// Get a list of all nodes currently attached to the platform
     fn get_nodes(context: &Database) -> FieldResult<Option<Vec<Node>>> {
         //let res = context.db.lock().unwrap().get_node(&node_id);
         let res = context.get_nodes();

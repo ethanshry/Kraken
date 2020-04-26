@@ -59,6 +59,7 @@ impl Clone for Node {
 }
 
 // non-gql impl block for Node
+// TODO rename so this makes more sense (is really node-info or something)
 impl Node {
     pub fn new(
         id: &str,
@@ -108,7 +109,9 @@ impl Node {
         self.load_avg_5 = load_avg_5.parse::<f32>().unwrap();
     }
 
+    /// Parse a Node from a Vec<String> of a rabbitMQ sysinfo message
     pub fn from_msg(data: &Vec<String>) -> Node {
+        // TODO find a safer way to do this
         Node {
             id: data.get(0).unwrap().clone(),
             model: "custom-pc".to_owned(),

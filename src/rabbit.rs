@@ -33,6 +33,7 @@ impl RabbitBroker {
         Exchange::direct(&self.channel)
     }
 
+    /// Gets a consumer of a queue
     pub fn get_consumer(&self, queue_label: &str) -> amiquip::Consumer {
         self.channel
             .queue_declare(queue_label, QueueDeclareOptions::default())
@@ -42,6 +43,8 @@ impl RabbitBroker {
     }
 }
 
+/// Trait to pack system identifier and data into a vector to be sent by rabbit,
+/// and unpack a Vec<u8> to a string for easy processing
 pub trait RabbitMessage {
     fn build_message(identifier: &String, packet_data: String) -> Vec<u8>;
     fn deconstruct_message(packet_data: &Vec<u8>) -> Vec<String>;

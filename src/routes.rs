@@ -4,8 +4,7 @@ use crate::{
 }; // Include module from the crate
 
 use juniper::{EmptyMutation, RootNode};
-use rocket::response::content;
-use rocket::State;
+use rocket::{response::content, response::NamedFile, State};
 
 // declare the schema, will need to dig into this more
 // Presumably this would use not an Empty Mutation in the future
@@ -15,6 +14,7 @@ pub type Schema = RootNode<'static, Query, EmptyMutation<Database>>;
 
 #[rocket::get("/")]
 pub fn root() -> content::Html<String> {
+    // TODO point to static site
     content::Html("Welcome to Kraken!".to_string())
 }
 
@@ -41,4 +41,16 @@ pub fn post_graphql_handler(
 ) -> juniper_rocket::GraphQLResponse {
     let ctx = context.db.lock().unwrap();
     request.execute(&schema, &ctx)
+}
+
+#[rocket::get("/<path>")]
+pub fn site(path: String) -> NamedFile {
+    // TODO handle gracefully
+    NamedFile::open(format!(
+        "{}/{}/{}",
+        env!("CARGO_MANIFEST_DIR"),
+        "static",
+        path
+    ))
+    .unwrap()
 }
