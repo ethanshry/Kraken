@@ -47,7 +47,6 @@ pub fn post_graphql_handler(
 #[rocket::get("/<path..>")]
 pub fn site(path: PathBuf) -> NamedFile {
     // TODO handle gracefully
-    println!("{}", path.to_str().unwrap());
     NamedFile::open(format!(
         "{}/{}/{}",
         env!("CARGO_MANIFEST_DIR"),

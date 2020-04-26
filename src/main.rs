@@ -4,6 +4,8 @@
 //extern crate juniper; // = import external crate? why do I not need rocket, etc?
 
 mod db; // looks for a file named "db.rs" and implicitly wraps it in a mod db {}
+mod file_utils;
+mod git_utils;
 mod model;
 mod rabbit;
 mod routes;
@@ -12,19 +14,21 @@ mod schema;
 extern crate fs_extra;
 
 use amiquip::{ConsumerMessage, Publish};
-use fs_extra::{copy_items, dir::copy};
-use git2::Repository;
 use juniper::EmptyMutation;
 use std::fs;
 use std::io::prelude::*;
-use std::iter::FromIterator;
 use std::sync::{Arc, Mutex};
 use sysinfo::SystemExt;
 use uuid::Uuid;
 
 use db::{Database, ManagedDatabase};
+use file_utils::{copy_dir_contents_to_static, copy_file_to_static};
+use git_utils::clone_remote_branch;
 use rabbit::{RabbitBroker, RabbitMessage, SysinfoMessage};
 use schema::Query;
+
+/// Kraken is a LAN-based deployment platform. It is designed to be highly flexible and easy to use.
+/// TODO actually write this documentation
 
 // TODO parse TOML
 // https://docs.rs/toml/0.5.6/toml/
@@ -32,36 +36,6 @@ use schema::Query;
 // TODO make reqwest
 // https://rust-lang-nursery.github.io/rust-cookbook/web/clients/apis.html
 // https://crates.io/crates/reqwest
-
-fn copy_dir_contents_to_static(dir: &str) -> () {
-    fn copy_dir_with_parent(root: &str, dir: &str) -> () {
-        if root != "" {
-            fs::create_dir(format!("static/{}", root));
-        }
-        for item in fs::read_dir(dir).unwrap() {
-            let path = &item.unwrap().path();
-            if path.is_dir() {
-                let folder_name = path.to_str().unwrap().split("/").last().unwrap();
-                copy_dir_with_parent(
-                    format!("{}/{}", root, folder_name).as_str(),
-                    path.to_str().unwrap(),
-                );
-            } else {
-                copy_file_to_static(root, path.to_str().unwrap());
-            }
-        }
-    }
-
-    copy_dir_with_parent("", dir)
-}
-
-fn copy_file_to_static(target_subdir: &str, file_path: &str) -> () {
-    let item_name = file_path.split("/").last().unwrap();
-    match target_subdir {
-        "" => fs::copy(file_path, format!("static/{}", item_name)),
-        _ => fs::copy(file_path, format!("static/{}/{}", target_subdir, item_name)),
-    };
-}
 
 fn main() {
     // TODO get sysinfo from platform.toml
@@ -85,50 +59,19 @@ fn main() {
     let db_ref = Arc::new(Mutex::new(db));
 
     let static_site_download_proc = std::thread::spawn(|| {
-        /*
-        let repo = match Repository::clone("https://github.com/ethanshry/kraken-ui", "tmp/site") {
-            Ok(r) => r,
-            Err(e) => panic!("Failed to Clone: {}", e),
-        };
-        */
-        //let mut reference = repo.find_reference("refs/remotes/origin/build").unwrap();
-        //reference.set_target(fetch_commit.id(), "Fast-Forward")?;
-        //repo.set_head("refs/heads/build").unwrap();
-
-        //repo.set_head("build");
-        /*
-        match repo.checkout_head(None) {
-            Ok(_) => println!("OK"),
-            Err(e) => println!("Err: {}", e),
-        };
-        */
-
-        /*
-                repo.find_remote("origin")
-                    .unwrap()
-                    .fetch(&["build"], None, None);
-        */
-
-        let mut cmd = std::process::Command::new("git")
-            .arg("clone")
-            .arg("-b")
-            .arg("build")
-            .arg("https://github.com/ethanshry/Kraken-UI.git")
-            .arg("tmp/site")
-            .spawn()
-            .expect("err in clone");
+        let mut cmd = clone_remote_branch(
+            "https://github.com/ethanshry/Kraken-UI.git",
+            "build",
+            "tmp/site",
+        );
 
         cmd.wait();
 
-        println!("Directory succesfully cloned!");
-
-        let options = fs_extra::dir::CopyOptions::new();
-
         copy_dir_contents_to_static("tmp/site/build");
 
-        //copy("tmp/site/build/", "static", &options).unwrap();
-
         fs::remove_dir_all("tmp/site").unwrap();
+
+        println!("Kraken-UI is now available")
     });
 
     // Thread to post sysinfo every 5 seconds

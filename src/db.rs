@@ -29,7 +29,7 @@ impl Database {
 
         services.insert("test".to_owned(), test_services);
 
-        let test_node = Node::new("test", "EthanShryDesktop", 0, 0, 0, 0.0, false);
+        let test_node = Node::new("test", "EthanShryDesktop", 0, 0, 0, 0.0);
 
         nodes.insert("test".to_owned(), test_node);
 

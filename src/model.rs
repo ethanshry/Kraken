@@ -34,7 +34,7 @@ pub struct Node {
     ram_free: u64,
     ram_used: u64,
     load_avg_5: f32,
-    pub application_instances: bool,
+    pub application_instances: Vec<String>,
     services: Vec<Service>,
 }
 
@@ -47,11 +47,14 @@ impl Clone for Node {
             ram_used: self.ram_used,
             load_avg_5: self.load_avg_5,
             uptime: self.uptime,
-            application_instances: self.application_instances,
+            application_instances: Vec::new(),
             services: Vec::new(),
         };
         for service in self.services.iter() {
             node.services.push(service.clone());
+        }
+        for app in self.application_instances.iter() {
+            node.application_instances.push(app.clone());
         }
 
         node
@@ -68,7 +71,6 @@ impl Node {
         ram_free: u64,
         ram_used: u64,
         load_avg_5: f32,
-        application_instances: bool,
     ) -> Node {
         Node {
             id: id.to_owned(),
@@ -77,7 +79,7 @@ impl Node {
             ram_free,
             ram_used,
             load_avg_5,
-            application_instances,
+            application_instances: vec![],
             services: vec![],
         }
     }
@@ -119,8 +121,16 @@ impl Node {
             ram_free: data.get(2).unwrap().parse::<u64>().unwrap(),
             ram_used: data.get(3).unwrap().parse::<u64>().unwrap(),
             load_avg_5: data.get(4).unwrap().parse::<f32>().unwrap(),
-            application_instances: false,
+            application_instances: vec![],
             services: vec![],
         }
+    }
+
+    pub fn add_service(&mut self, service: Service) -> () {
+        self.services.push(service);
+    }
+
+    pub fn add_application_instance(&mut self, app: String) -> () {
+        self.application_instances.push(app);
     }
 }

@@ -38,7 +38,7 @@ impl Node {
         self.current_ram_percent()
     }
 
-    fn application_instances(&self) -> bool {
+    fn application_instances(&self) -> Vec<String> {
         self.application_instances
     }
 
