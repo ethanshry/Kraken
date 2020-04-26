@@ -9,10 +9,15 @@ mod rabbit;
 mod routes;
 mod schema;
 
+extern crate fs_extra;
+
 use amiquip::{ConsumerMessage, Publish};
+use fs_extra::{copy_items, dir::copy};
+use git2::Repository;
 use juniper::EmptyMutation;
 use std::fs;
 use std::io::prelude::*;
+use std::iter::FromIterator;
 use std::sync::{Arc, Mutex};
 use sysinfo::SystemExt;
 use uuid::Uuid;
@@ -27,6 +32,36 @@ use schema::Query;
 // TODO make reqwest
 // https://rust-lang-nursery.github.io/rust-cookbook/web/clients/apis.html
 // https://crates.io/crates/reqwest
+
+fn copy_dir_contents_to_static(dir: &str) -> () {
+    fn copy_dir_with_parent(root: &str, dir: &str) -> () {
+        if root != "" {
+            fs::create_dir(format!("static/{}", root));
+        }
+        for item in fs::read_dir(dir).unwrap() {
+            let path = &item.unwrap().path();
+            if path.is_dir() {
+                let folder_name = path.to_str().unwrap().split("/").last().unwrap();
+                copy_dir_with_parent(
+                    format!("{}/{}", root, folder_name).as_str(),
+                    path.to_str().unwrap(),
+                );
+            } else {
+                copy_file_to_static(root, path.to_str().unwrap());
+            }
+        }
+    }
+
+    copy_dir_with_parent("", dir)
+}
+
+fn copy_file_to_static(target_subdir: &str, file_path: &str) -> () {
+    let item_name = file_path.split("/").last().unwrap();
+    match target_subdir {
+        "" => fs::copy(file_path, format!("static/{}", item_name)),
+        _ => fs::copy(file_path, format!("static/{}/{}", target_subdir, item_name)),
+    };
+}
 
 fn main() {
     // TODO get sysinfo from platform.toml
@@ -48,6 +83,53 @@ fn main() {
     let db = Database::new();
 
     let db_ref = Arc::new(Mutex::new(db));
+
+    let static_site_download_proc = std::thread::spawn(|| {
+        /*
+        let repo = match Repository::clone("https://github.com/ethanshry/kraken-ui", "tmp/site") {
+            Ok(r) => r,
+            Err(e) => panic!("Failed to Clone: {}", e),
+        };
+        */
+        //let mut reference = repo.find_reference("refs/remotes/origin/build").unwrap();
+        //reference.set_target(fetch_commit.id(), "Fast-Forward")?;
+        //repo.set_head("refs/heads/build").unwrap();
+
+        //repo.set_head("build");
+        /*
+        match repo.checkout_head(None) {
+            Ok(_) => println!("OK"),
+            Err(e) => println!("Err: {}", e),
+        };
+        */
+
+        /*
+                repo.find_remote("origin")
+                    .unwrap()
+                    .fetch(&["build"], None, None);
+        */
+
+        let mut cmd = std::process::Command::new("git")
+            .arg("clone")
+            .arg("-b")
+            .arg("build")
+            .arg("https://github.com/ethanshry/Kraken-UI.git")
+            .arg("tmp/site")
+            .spawn()
+            .expect("err in clone");
+
+        cmd.wait();
+
+        println!("Directory succesfully cloned!");
+
+        let options = fs_extra::dir::CopyOptions::new();
+
+        copy_dir_contents_to_static("tmp/site/build");
+
+        //copy("tmp/site/build/", "static", &options).unwrap();
+
+        fs::remove_dir_all("tmp/site").unwrap();
+    });
 
     // Thread to post sysinfo every 5 seconds
     let system_status_proc;
@@ -147,6 +229,7 @@ fn main() {
         )
         .launch();
 
+    static_site_download_proc.join().unwrap();
     system_status_proc.join().unwrap();
     rabbit_consumer_proc.join().unwrap();
 }

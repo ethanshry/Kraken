@@ -7,3 +7,5 @@
 
 # ignore the system save file
 id.txt
+
+/static/*
