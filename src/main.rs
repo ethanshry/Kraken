@@ -6,15 +6,21 @@
 mod db; // looks for a file named "db.rs" and implicitly wraps it in a mod db {}
 mod file_utils;
 mod git_utils;
+mod gitapi;
 mod model;
 mod rabbit;
 mod routes;
 mod schema;
 
 extern crate fs_extra;
+extern crate serde;
+
+#[macro_use]
+extern crate juniper;
 
 use amiquip::{ConsumerMessage, Publish};
 use juniper::EmptyMutation;
+use std::collections::HashMap;
 use std::fs;
 use std::io::prelude::*;
 use std::sync::{Arc, Mutex};
@@ -24,6 +30,7 @@ use uuid::Uuid;
 use db::{Database, ManagedDatabase};
 use file_utils::{copy_dir_contents_to_static, copy_file_to_static};
 use git_utils::clone_remote_branch;
+use model::{ApplicationStatus, Orchestrator, OrchestratorInterface, Platform};
 use rabbit::{RabbitBroker, RabbitMessage, SysinfoMessage};
 use schema::Query;
 
@@ -56,27 +63,91 @@ fn main() {
 
     let db = Database::new();
 
+    let platform: Platform;
+    // TODO handle panic here
+    match fs::read_to_string("platform.json") {
+        Ok(contents) => platform = serde_json::from_str(&contents).unwrap(),
+        Err(_) => {
+            platform = Platform::new(
+                &vec![],
+                &Orchestrator::new(
+                    OrchestratorInterface::new(
+                        Some(String::from("https://github.com/ethanshry/Kraken-UI.git")),
+                        None,
+                        ApplicationStatus::ERRORED,
+                    )
+                    .to_owned(),
+                ),
+                &vec![],
+            );
+        }
+    }
+
+    println!("Platform: {:?}", platform);
+
     let db_ref = Arc::new(Mutex::new(db));
 
-    let static_site_download_proc = std::thread::spawn(|| {
-        let mut cmd = clone_remote_branch(
-            "https://github.com/ethanshry/Kraken-UI.git",
-            "build",
-            "tmp/site",
-        );
+    let static_site_download_proc;
+    {
+        let arc = db_ref.clone();
 
-        cmd.wait();
+        static_site_download_proc = std::thread::spawn(move || {
+            let git_data =
+                gitapi::GitApi::get_tail_commits_for_repo_branches("ethanshry", "kraken");
 
-        copy_dir_contents_to_static("tmp/site/build");
+            let mut sha = String::from("");
 
-        fs::remove_dir_all("tmp/site").unwrap();
+            let should_update_ui = match git_data {
+                Some(data) => {
+                    let mut flag = true;
+                    for branch in data {
+                        if branch.name == "build" {
+                            let db = arc.lock().unwrap();
+                            let active_branch = db.get_orchestrator().ui.cloned_commit;
+                            // unlock db
+                            drop(db);
+                            match active_branch {
+                                Some(b) => {
+                                    if branch.commit.sha == b {
+                                        flag = false;
+                                        sha = b.clone();
+                                    }
+                                }
+                                None => {
+                                    sha = branch.commit.sha.clone();
+                                }
+                            }
+                            break;
+                        }
+                    }
+                    flag
+                }
+                None => true,
+            };
 
-        println!("Kraken-UI is now available")
-    });
+            if should_update_ui {
+                println!("Cloning updated UI...");
+                clone_remote_branch(
+                    "https://github.com/ethanshry/Kraken-UI.git",
+                    "build",
+                    "tmp/site",
+                )
+                .wait()
+                .unwrap();
+                copy_dir_contents_to_static("tmp/site/build");
+                fs::remove_dir_all("tmp/site").unwrap();
+            }
+
+            println!("Kraken-UI is now available at commit SHA:{}", sha);
+            //let db = arc.lock().unwrap();
+            //db.update_orchestrator_interface(OrchestratorInterface::new());
+        });
+    }
 
     // Thread to post sysinfo every 5 seconds
     let system_status_proc;
     {
+        // TODO do I need this???
         let arc = db_ref.clone();
         let broker;
 
@@ -103,6 +174,7 @@ fn main() {
                 publisher
                     .publish(Publish::new(&msg[..], "sysinfo"))
                     .unwrap();
+                // TODO do I need this???
                 let _ = arc.lock().unwrap();
             }
         });

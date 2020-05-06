@@ -16,7 +16,7 @@ pub fn copy_dir_contents_to_static(dir: &str) -> () {
                     path.to_str().unwrap(),
                 );
             } else {
-                copy_file_to_static(root, path.to_str().unwrap());
+                copy_file_to_static(root, &path.to_str().unwrap());
             }
         }
     }

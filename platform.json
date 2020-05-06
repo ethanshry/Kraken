@@ -1,37 +1,12 @@
 {
-    "deployments": [
-        {
-            "id": "001",
-            "src_url": "",
-            "version": "",
-            "commit": "",
-            "status": "",
-            "results_url": "",
-            "deployment_url": ""
-        }
-    ],
+    "deployments": [],
     "orchestrator": {
         "ui": {
             "src_url": "https://github.com/ethanshry/Kraken-UI.git",
-            "cloned_commit": "f9dbdbea7d24065c34f38ff25149651c00e9ae72",
+            "cloned_commit": "abcdef",
             "status": "DEPLOYED"
-        }
+        },
+        "services": []
     },
-    "nodes": [
-        {
-            "id": "test",
-            "model": "ethanshrytestcomputer",
-            "uptime": "10000",
-            "ram_free": "5",
-            "ram_used": "11",
-            "load_avg_5": "0.5",
-            "application_instances": [
-                "001",
-                "002"
-            ],
-            "services": [
-                {}
-            ]
-        }
-    ]
+    "nodes": []
 }

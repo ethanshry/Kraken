@@ -1,25 +1,51 @@
-#[macro_use]
-extern crate serde
+use reqwest::header::{CONTENT_TYPE, USER_AGENT};
+use serde::Deserialize;
 
 #[derive(Deserialize, Debug)]
-struct Commit {
-    sha: String,
-    url: String
+pub struct Commit {
+    pub sha: String,
+    url: String,
 }
 
 #[derive(Deserialize, Debug)]
-struct Branch {
-    name: String
-    commit: Commit,
-    protected: bool
+pub struct Branch {
+    pub name: String,
+    pub commit: Commit,
+    protected: bool,
 }
 
-struct GitApi {}
+pub struct GitApi {}
 
 impl GitApi {
-    fn get_commits(user: &str, branch: &str) -> Vec<Commit> {
-        let url = format!("https://api.github.com/repos/{owner}/{repo}/branches", owner = user, repo = branch)
-        let mut response = reqwest::get(&url);
-        response.json()?
+    pub fn get_tail_commits_for_repo_branches(user: &str, repo: &str) -> Option<Vec<Branch>> {
+        let url = format!(
+            "https://api.github.com/repos/{owner}/{repo}/branches",
+            owner = user,
+            repo = repo
+        );
+
+        println!("Making request to: {}", url);
+
+        let client = reqwest::blocking::Client::new();
+
+        let response = client
+            .get(&url)
+            .header(CONTENT_TYPE, "application/json")
+            .header(USER_AGENT, "Kraken")
+            .send();
+
+        match response {
+            Ok(r) => match r.json() {
+                Ok(data) => data,
+                Err(e) => {
+                    println!("Failed to parse JSON: {}", e);
+                    None
+                }
+            },
+            Err(e) => {
+                println!("Error in reqwest to {}: {}", url, e);
+                None
+            }
+        }
     }
 }
