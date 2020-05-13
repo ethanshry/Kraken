@@ -1,0 +1,4 @@
+[ui]
+git_username = "ethanshry"
+repo_name = "kraken-ui"
+build_branch = "build"

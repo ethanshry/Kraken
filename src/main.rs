@@ -19,6 +19,7 @@ extern crate serde;
 extern crate juniper;
 
 use amiquip::{ConsumerMessage, Publish};
+use bollard::Docker;
 use juniper::EmptyMutation;
 use std::collections::HashMap;
 use std::fs;
@@ -30,7 +31,9 @@ use uuid::Uuid;
 use db::{Database, ManagedDatabase};
 use file_utils::{copy_dir_contents_to_static, copy_file_to_static};
 use git_utils::clone_remote_branch;
-use model::{ApplicationStatus, Orchestrator, OrchestratorInterface, Platform};
+use model::{
+    ApplicationStatus, Orchestrator, OrchestratorInterface, Platform, Service, ServiceStatus,
+};
 use rabbit::{RabbitBroker, RabbitMessage, SysinfoMessage};
 use schema::Query;
 
@@ -61,7 +64,7 @@ fn main() {
         }
     }
 
-    let db = Database::new();
+    let mut db = Database::new();
 
     let platform: Platform;
     // TODO handle panic here
@@ -85,6 +88,16 @@ fn main() {
 
     println!("Platform: {:?}", platform);
 
+    db.update_orchestrator_interface(platform.orchestrator.ui);
+
+    for node in platform.nodes {
+        db.insert_node(node);
+    }
+
+    for deployment in platform.deployments {
+        db.insert_deployment(deployment);
+    }
+
     let db_ref = Arc::new(Mutex::new(db));
 
     let static_site_download_proc;
@@ -93,7 +106,7 @@ fn main() {
 
         static_site_download_proc = std::thread::spawn(move || {
             let git_data =
-                gitapi::GitApi::get_tail_commits_for_repo_branches("ethanshry", "kraken");
+                gitapi::GitApi::get_tail_commits_for_repo_branches("ethanshry", "kraken-ui");
 
             let mut sha = String::from("");
 
@@ -111,6 +124,8 @@ fn main() {
                                     if branch.commit.sha == b {
                                         flag = false;
                                         sha = b.clone();
+                                    } else {
+                                        sha = branch.commit.sha;
                                     }
                                 }
                                 None => {
@@ -125,6 +140,11 @@ fn main() {
                 None => true,
             };
 
+            if sha == "" {
+                println!("No build branch found, cannot update kraken-ui");
+                return;
+            }
+
             if should_update_ui {
                 println!("Cloning updated UI...");
                 clone_remote_branch(
@@ -138,9 +158,7 @@ fn main() {
                 fs::remove_dir_all("tmp/site").unwrap();
             }
 
-            println!("Kraken-UI is now available at commit SHA:{}", sha);
-            //let db = arc.lock().unwrap();
-            //db.update_orchestrator_interface(OrchestratorInterface::new());
+            println!("Kraken-UI is now available at commit SHA: {}", sha);
         });
     }
 
@@ -149,16 +167,30 @@ fn main() {
     {
         // TODO do I need this???
         let arc = db_ref.clone();
-        let broker;
 
-        match RabbitBroker::new("amqp://localhost:5672") {
-            Some(b) => broker = b,
-            None => {
-                // TODO spin up service and try again
-                broker = RabbitBroker::new("amqp://localhost:5672").unwrap()
-            }
-        }
         system_status_proc = std::thread::spawn(move || {
+            let broker;
+
+            match RabbitBroker::new("amqp://localhost:5672") {
+                Some(b) => broker = b,
+                None => {
+                    // TODO spin up service and try again
+                    broker = RabbitBroker::new("amqp://localhost:5672").unwrap()
+                }
+            }
+
+            // closure for auto unlock
+            || -> () {
+                let mut db = arc.lock().unwrap();
+                db.add_platform_service(Service::new(
+                    "rabbitmq",
+                    "0.1.0",
+                    "amqp://localhost:5672",
+                    ServiceStatus::OK,
+                ))
+                .unwrap();
+            }();
+
             let publisher = broker.get_publisher();
             loop {
                 std::thread::sleep(std::time::Duration::new(5, 0));
@@ -174,8 +206,6 @@ fn main() {
                 publisher
                     .publish(Publish::new(&msg[..], "sysinfo"))
                     .unwrap();
-                // TODO do I need this???
-                let _ = arc.lock().unwrap();
             }
         });
     }
@@ -206,15 +236,16 @@ fn main() {
                         let mut db = arc.lock().unwrap();
                         if let Some(n) = db.get_node(data.get(0).unwrap()) {
                             let mut new_node = n.clone();
+                            new_node.set_id(data.get(0).unwrap());
                             new_node.update(
                                 data.get(1).unwrap(),
                                 data.get(2).unwrap(),
                                 data.get(3).unwrap(),
                                 data.get(4).unwrap(),
                             );
-                            db.insert_node(data.get(0).unwrap(), new_node);
+                            db.insert_node(new_node);
                         } else {
-                            db.insert_node(data.get(0).unwrap(), model::Node::from_msg(&data));
+                            db.insert_node(model::Node::from_msg(&data));
                         }
 
                         consumer.ack(delivery).expect("noack");
@@ -227,6 +258,8 @@ fn main() {
             }
         });
     }
+
+    //let docker = Docker::connect_with_unix_defaults().unwrap();
 
     // launch the API server
     rocket::ignite()

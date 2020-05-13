@@ -1,10 +1,10 @@
 use crate::model::{
-    ApplicationInstance, ApplicationStatus, Deployment, Node, Orchestrator, OrchestratorInterface,
-    Platform, Service, ServiceStatus,
+    ApplicationStatus, Deployment, Node, Orchestrator, OrchestratorInterface, Service,
 };
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
+/// An ARC to a Database
 pub struct ManagedDatabase {
     pub db: Arc<Mutex<Database>>,
 }
@@ -15,6 +15,8 @@ impl ManagedDatabase {
     }
 }
 
+/// The database contains information about the currently running platform.
+/// This is managed on the orchestration nodes only
 pub struct Database {
     deployments: HashMap<String, Deployment>,
     nodes: HashMap<String, Node>,
@@ -79,9 +81,9 @@ impl Database {
         self.nodes.get(node_id)
     }
 
-    pub fn insert_node(&mut self, node_id: &str, node: Node) -> Option<Node> {
-        println!("inserting {}", node_id);
-        self.nodes.insert(node_id.to_owned(), node)
+    pub fn insert_node(&mut self, node: Node) -> Option<Node> {
+        println!("inserting {}", node.id);
+        self.nodes.insert(node.id.to_owned(), node)
     }
 
     pub fn get_nodes(&self) -> Option<Vec<Node>> {
@@ -101,13 +103,10 @@ impl Database {
         self.deployments.get(deployment_id)
     }
 
-    pub fn insert_deployment(
-        &mut self,
-        deployment_id: &str,
-        node: Deployment,
-    ) -> Option<Deployment> {
-        println!("inserting {}", deployment_id);
-        self.deployments.insert(deployment_id.to_owned(), node)
+    pub fn insert_deployment(&mut self, deployment: Deployment) -> Option<Deployment> {
+        println!("inserting {}", deployment.id);
+        self.deployments
+            .insert(deployment.id.to_owned(), deployment)
     }
 
     pub fn get_deployments(&self) -> Option<Vec<Deployment>> {

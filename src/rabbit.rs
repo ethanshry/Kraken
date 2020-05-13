@@ -1,7 +1,7 @@
 use amiquip::{Connection, ConsumerOptions, Exchange, QueueDeclareOptions};
 use std::iter::FromIterator;
 
-/// TODO refactor into connection and broker
+/// The interface between Kraken and RabbitMQ
 pub struct RabbitBroker {
     /// Connection to the Rabbit Instance (Should be one per device)
     conn: Connection,

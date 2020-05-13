@@ -107,6 +107,10 @@ impl Node {
         ((self.ram_used as f64) / ((self.ram_free as f64) + (self.ram_used as f64))) as f64
     }
 
+    pub fn set_id(&mut self, id: &str) -> () {
+        self.id = id.to_owned();
+    }
+
     pub fn update(&mut self, ram_free: &str, ram_used: &str, uptime: &str, load_avg_5: &str) -> () {
         self.ram_free = ram_free.parse::<u64>().unwrap();
         self.ram_used = ram_used.parse::<u64>().unwrap();

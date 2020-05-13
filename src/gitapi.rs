@@ -17,6 +17,7 @@ pub struct Branch {
 pub struct GitApi {}
 
 impl GitApi {
+    /// Grabs the most recent commits for all branches in a given repo
     pub fn get_tail_commits_for_repo_branches(user: &str, repo: &str) -> Option<Vec<Branch>> {
         let url = format!(
             "https://api.github.com/repos/{owner}/{repo}/branches",

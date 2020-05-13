@@ -5,7 +5,7 @@ use std::fs;
 pub fn copy_dir_contents_to_static(dir: &str) -> () {
     fn copy_dir_with_parent(root: &str, dir: &str) -> () {
         if root != "" {
-            fs::create_dir(format!("static/{}", root));
+            fs::create_dir(format!("static/{}", root)).unwrap();
         }
         for item in fs::read_dir(dir).unwrap() {
             let path = &item.unwrap().path();
@@ -31,5 +31,6 @@ pub fn copy_file_to_static(target_subdir: &str, file_path: &str) -> () {
     match target_subdir {
         "" => fs::copy(file_path, format!("static/{}", item_name)),
         _ => fs::copy(file_path, format!("static/{}/{}", target_subdir, item_name)),
-    };
+    }
+    .unwrap();
 }
