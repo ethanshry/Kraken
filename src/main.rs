@@ -19,17 +19,19 @@ extern crate serde;
 extern crate juniper;
 
 use amiquip::{ConsumerMessage, Publish};
+use bollard::image::BuildImageOptions;
 use bollard::Docker;
 use juniper::EmptyMutation;
-use std::collections::HashMap;
 use std::fs;
 use std::io::prelude::*;
+use std::process::Command;
 use std::sync::{Arc, Mutex};
 use sysinfo::SystemExt;
+use tar::Builder as TarBuilder;
 use uuid::Uuid;
 
 use db::{Database, ManagedDatabase};
-use file_utils::{copy_dir_contents_to_static, copy_file_to_static};
+use file_utils::{clear_tmp, copy_dir_contents_to_static, copy_dockerfile_to_dir};
 use git_utils::clone_remote_branch;
 use model::{
     ApplicationStatus, Orchestrator, OrchestratorInterface, Platform, Service, ServiceStatus,
@@ -46,10 +48,11 @@ use schema::Query;
 // TODO make reqwest
 // https://rust-lang-nursery.github.io/rust-cookbook/web/clients/apis.html
 // https://crates.io/crates/reqwest
-
-fn main() {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     // TODO get sysinfo from platform.toml
     // TODO pull static site from git and put in static folder
+
+    clear_tmp();
 
     // get uuid for system, or create one
     let uuid;
@@ -259,7 +262,75 @@ fn main() {
         });
     }
 
-    //let docker = Docker::connect_with_unix_defaults().unwrap();
+    // deploy image
+
+    let res = std::thread::spawn(move || {
+        let tmp_dir_path = "tmp/process";
+
+        let docker: Docker = Docker::connect_with_unix_defaults().unwrap();
+        let container_guid = Uuid::new_v4().to_hyphenated().to_string();
+
+        println!("Creating Container {}", &container_guid);
+
+        println!("Cloning docker process...");
+        clone_remote_branch(
+            "https://github.com/ethanshry/scapegoat.git",
+            "master",
+            tmp_dir_path,
+        )
+        .wait()
+        .unwrap();
+
+        // Inject the proper dockerfile into the project
+        // TODO read this from the project's toml file
+        copy_dockerfile_to_dir("python36.dockerfile", tmp_dir_path);
+
+        /*
+        // tar the github repo
+        let mut ball =
+            TarBuilder::new(fs::File::create(format!("tmp/tar/{}.tar", &container_guid)).unwrap());
+        //let mut ball = TarBuilder::new(Vec::new());
+
+        ball.append_dir_all(tmp_dir_path, ".").unwrap();
+
+        ball.finish();
+
+        let options = BuildImageOptions {
+            t: container_guid.clone(),
+            rm: true,
+            ..Default::default()
+        };
+
+        */
+
+        println!("module path is {}", module_path!());
+
+        let res = Command::new("docker")
+            .current_dir("tmp/process")
+            .arg("build")
+            .arg(".")
+            .arg("-t")
+            .arg(&container_guid).spawn().expect("error in docker build");
+
+        //let mut ball = fs::File::open(format!("/tmp/tar/{}", &container_guid)).unwrap();
+
+        //let mut contents = Vec::new();
+        //ball.read_to_end(&mut contents).unwrap();
+
+        //let res = docker.build_image(options, None, Some(contents.into()));
+        /*.map(|v| {
+            println!("{:?}", v);
+            v
+        })
+        .map_err(|e| {
+            println!("{:?}", e);
+            e
+        })
+        .collect::<Vec<Result<BuildImageResults, bollard::errors::Error>>>()
+        .await;
+        */
+        //res.try_collect().await;
+    });
 
     // launch the API server
     rocket::ignite()
@@ -280,4 +351,5 @@ fn main() {
     static_site_download_proc.join().unwrap();
     system_status_proc.join().unwrap();
     rabbit_consumer_proc.join().unwrap();
+    Ok(())
 }

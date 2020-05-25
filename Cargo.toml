@@ -7,7 +7,7 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-futures = "0.3.5" # for bollard
+futures = "0.3.4"
 juniper = "0.14.2"
 juniper_rocket = "0.5.1"
 bollard = "0.5"
@@ -18,6 +18,8 @@ sysinfo = "0.14.1"
 amiquip = { version = "0.3", default-features = false }
 uuid = { version = "0.8", features = ["serde", "v4"] }
 reqwest = { version = "0.10", features = ["blocking", "json"] }
+tokio = { version = "0.2", features = ["full"] }
 toml = "0.4.2"
 git2 = "0.7.1"
 fs_extra = "1.1.0"
+tar = "0.4.26"

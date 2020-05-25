@@ -34,3 +34,30 @@ pub fn copy_file_to_static(target_subdir: &str, file_path: &str) -> () {
     }
     .unwrap();
 }
+
+/// Searches for a dockerfile and copies it to the target file path
+/// File path should be the path to the repository root to copy the directory (not including the dockerfile name, which will be 'Dockerfile')
+pub fn copy_dockerfile_to_dir(dockerfile_ref: &str, file_path: &str) -> bool {
+    match fs::copy(
+        format!("dockerfiles/{}", dockerfile_ref),
+        format!("{}/Dockerfile", file_path),
+    ) {
+        Ok(_) => {
+            true
+        },
+        Err(e) => {
+            println!("There was an error copying the dockerfile {} to {}: {}", dockerfile_ref, file_path, e);
+            false
+        },
+    }
+}
+
+/// Clears the crate's tmp directory if it exists. 
+/// Returns true if directory existed and was removed
+/// Returns false if directory did not exist
+pub fn clear_tmp() -> bool {
+    match fs::remove_dir_all("tmp") {
+        Ok(_) => true,
+        Err(_) => false
+    }
+}

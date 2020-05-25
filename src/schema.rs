@@ -1,6 +1,6 @@
 use crate::db::Database;
 use crate::model::{
-    ApplicationInstance, ApplicationStatus, Deployment, Node, Orchestrator, OrchestratorInterface,
+    ApplicationInstance, ApplicationStatus, Deployment, Node, Orchestrator,
     Platform, Service,
 };
 use juniper::{FieldError, FieldResult};
