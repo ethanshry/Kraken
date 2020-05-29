@@ -1,5 +1,7 @@
 use juniper;
 use serde::{Deserialize, Serialize};
+use std::string::ToString; // for strum enum to string
+use strum_macros::{Display, EnumString};
 
 #[derive(Serialize, Debug, Deserialize, Clone, juniper::GraphQLEnum)]
 pub enum ServiceStatus {
@@ -111,44 +113,89 @@ impl Node {
         self.id = id.to_owned();
     }
 
-    pub fn update(&mut self, ram_free: &str, ram_used: &str, uptime: &str, load_avg_5: &str) -> () {
-        self.ram_free = ram_free.parse::<u64>().unwrap();
-        self.ram_used = ram_used.parse::<u64>().unwrap();
-        self.uptime = uptime.parse::<u64>().unwrap();
-        self.load_avg_5 = load_avg_5.parse::<f32>().unwrap();
+    /// update the node values
+    pub fn update(&mut self, ram_free: u64, ram_used: u64, uptime: u64, load_avg_5: f32) -> () {
+        self.ram_free = ram_free;
+        self.ram_used = ram_used;
+        self.uptime = uptime;
+        self.load_avg_5 = load_avg_5;
     }
 
     /// Parse a Node from a Vec<String> of a rabbitMQ sysinfo message
-    pub fn from_msg(data: &Vec<String>) -> Node {
+    pub fn from_incomplete(
+        id: &str,
+        model: Option<&str>,
+        ram_free: Option<u64>,
+        ram_used: Option<u64>,
+        uptime: Option<u64>,
+        load_avg_5: Option<f32>,
+        apps: Option<Vec<String>>,
+        services: Option<Vec<Service>>,
+    ) -> Node {
         // TODO find a safer way to do this
-        Node {
-            id: data.get(0).unwrap().clone(),
-            model: "custom-pc".to_owned(),
-            uptime: data.get(1).unwrap().parse::<u64>().unwrap(),
-            ram_free: data.get(2).unwrap().parse::<u64>().unwrap(),
-            ram_used: data.get(3).unwrap().parse::<u64>().unwrap(),
-            load_avg_5: data.get(4).unwrap().parse::<f32>().unwrap(),
-            application_instances: vec![],
-            services: vec![],
+        let n = Node::new(
+            id,
+            match model {
+                Some(m) => m,
+                None => "placeholder_model",
+            },
+            match uptime {
+                Some(r) => r,
+                None => 0,
+            },
+            match ram_free {
+                Some(r) => r,
+                None => 0,
+            },
+            match ram_used {
+                Some(r) => r,
+                None => 0,
+            },
+            match load_avg_5 {
+                Some(r) => r,
+                None => 0.0,
+            },
+        );
+
+        /*
+        TODO rm (node coming from a message probably doesn't have apps or services)
+        if let Some(apps) = apps {
+            let app_iter = apps.into_iter();
+
+            while let Some(app) = app_iter.next() {
+                n.add_application_instance(&app);
+            }
         }
+
+        if let Some(service) = apps {
+            let app_iter = apps.into_iter();
+
+            while let Some(app) = app_iter.next() {
+                n.add_application_instance(&app);
+            }
+        }
+        */
+
+        n
     }
 
     pub fn add_service(&mut self, service: Service) -> () {
         self.services.push(service);
     }
 
-    pub fn add_application_instance(&mut self, app: String) -> () {
-        self.application_instances.push(app);
+    pub fn add_application_instance(&mut self, app: &str) -> () {
+        self.application_instances.push(app.to_owned());
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, juniper::GraphQLEnum)]
+#[derive(Serialize, Deserialize, Debug, Display, Clone, juniper::GraphQLEnum, EnumString)]
 pub enum ApplicationStatus {
-    DEPLOYED,
-    DEPLOYING,
+    INITIALIZED,
     RETRIEVING,
     BUILDING,
     TESTING,
+    DEPLOYING,
+    DEPLOYED,
     ERRORED,
 }
 

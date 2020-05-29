@@ -14,20 +14,21 @@ mod schema;
 
 extern crate fs_extra;
 extern crate serde;
+extern crate strum;
 
 #[macro_use]
 extern crate juniper;
+extern crate strum_macros;
 
 use amiquip::{ConsumerMessage, Publish};
-use bollard::image::BuildImageOptions;
-use bollard::Docker;
 use juniper::EmptyMutation;
 use std::fs;
 use std::io::prelude::*;
+use std::io::{self, Write};
 use std::process::Command;
 use std::sync::{Arc, Mutex};
+use strum_macros::{Display, EnumIter};
 use sysinfo::SystemExt;
-use tar::Builder as TarBuilder;
 use uuid::Uuid;
 
 use db::{Database, ManagedDatabase};
@@ -36,7 +37,7 @@ use git_utils::clone_remote_branch;
 use model::{
     ApplicationStatus, Orchestrator, OrchestratorInterface, Platform, Service, ServiceStatus,
 };
-use rabbit::{RabbitBroker, RabbitMessage, SysinfoMessage};
+use rabbit::{RabbitBroker, RabbitMessage, SysinfoMessage, DeploymentMessage};
 use schema::Query;
 
 /// Kraken is a LAN-based deployment platform. It is designed to be highly flexible and easy to use.
@@ -48,6 +49,8 @@ use schema::Query;
 // TODO make reqwest
 // https://rust-lang-nursery.github.io/rust-cookbook/web/clients/apis.html
 // https://crates.io/crates/reqwest
+
+// TODO build system_uuid into rabbit connection as a middlelayer before send
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // TODO get sysinfo from platform.toml
     // TODO pull static site from git and put in static folder
@@ -55,15 +58,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     clear_tmp();
 
     // get uuid for system, or create one
-    let uuid;
+    let system_uuid;
     match fs::read_to_string("id.txt") {
-        Ok(contents) => uuid = contents.parse::<String>().unwrap(),
+        Ok(contents) => system_uuid = contents.parse::<String>().unwrap(),
         Err(_) => {
             let mut file = fs::File::create("id.txt").unwrap();
             let contents = Uuid::new_v4();
             file.write_all(contents.to_hyphenated().to_string().as_bytes())
                 .unwrap();
-            uuid = contents.to_hyphenated().to_string()
+                system_uuid = contents.to_hyphenated().to_string()
         }
     }
 
@@ -171,7 +174,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // TODO do I need this???
         let arc = db_ref.clone();
 
+        let system_uuid = system_uuid.clone();
+
         system_status_proc = std::thread::spawn(move || {
+            
             let broker;
 
             match RabbitBroker::new("amqp://localhost:5672") {
@@ -195,19 +201,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }();
 
             let publisher = broker.get_publisher();
+
+            let mut msg = SysinfoMessage::new();
             loop {
                 std::thread::sleep(std::time::Duration::new(5, 0));
                 let system = sysinfo::System::new_all();
-                let msg = format!(
-                    "{}|{}|{}|{}",
-                    system.get_free_memory(),
-                    system.get_used_memory(),
-                    system.get_uptime(),
-                    system.get_load_average().five,
+                msg.update_message(
+                    system.get_free_memory(), 
+                    system.get_used_memory(), 
+                    system.get_uptime(), 
+                    system.get_load_average().five as f32
                 );
-                let msg = SysinfoMessage::build_message(&uuid, msg);
+                
                 publisher
-                    .publish(Publish::new(&msg[..], "sysinfo"))
+                    .publish(Publish::new(
+                        &msg.build_message(&system_uuid), 
+                        "sysinfo"))
                     .unwrap();
             }
         });
@@ -218,6 +227,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     {
         let arc = db_ref.clone();
         let broker;
+
+        let system_uuid = system_uuid.clone();
 
         match RabbitBroker::new("amqp://localhost:5672") {
             Some(b) => broker = b,
@@ -232,24 +243,70 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             for (_, message) in consumer.receiver().iter().enumerate() {
                 match message {
                     ConsumerMessage::Delivery(delivery) => {
-                        let data = SysinfoMessage::deconstruct_message(&delivery.body);
+                        let (node, message) = SysinfoMessage::deconstruct_message(&delivery.body);
                         println!("Recieved Message on the Sysinfo channel");
 
                         // TODO clean up all this unsafe unwrapping
                         let mut db = arc.lock().unwrap();
-                        if let Some(n) = db.get_node(data.get(0).unwrap()) {
+                        if let Some(n) = db.get_node(&node) {
                             let mut new_node = n.clone();
-                            new_node.set_id(data.get(0).unwrap());
+                            new_node.set_id(&node);
                             new_node.update(
-                                data.get(1).unwrap(),
-                                data.get(2).unwrap(),
-                                data.get(3).unwrap(),
-                                data.get(4).unwrap(),
+                                message.ram_free,
+                                message.ram_used,
+                                message.uptime,
+                                message.load_avg_5,
                             );
                             db.insert_node(new_node);
                         } else {
-                            db.insert_node(model::Node::from_msg(&data));
+                            db.insert_node(model::Node::from_incomplete(
+                                &node,
+                                None,
+                                Some(message.ram_free),
+                                Some(message.ram_used),
+                                Some(message.uptime),
+                                Some(message.load_avg_5),
+                                None,
+                                None,
+                            ));
                         }
+
+                        consumer.ack(delivery).expect("noack");
+                    }
+                    other => {
+                        println!("Consumer ended: {:?}", other);
+                        break;
+                    }
+                }
+            }
+        });
+    }
+
+    // Thread to consume deployment queue
+    let rabbit_consumer_proc;
+    {
+        let arc = db_ref.clone();
+        let broker;
+
+        let system_uuid = system_uuid.clone();
+
+        match RabbitBroker::new("amqp://localhost:5672") {
+            Some(b) => broker = b,
+            None => {
+                // TODO spin up service and try again
+                broker = RabbitBroker::new("amqp://localhost:5672").unwrap()
+            }
+        }
+        rabbit_consumer_proc = std::thread::spawn(move || {
+            let consumer = broker.get_consumer("deployment");
+
+            for (_, message) in consumer.receiver().iter().enumerate() {
+                match message {
+                    ConsumerMessage::Delivery(delivery) => {
+                        let (node, message) = DeploymentMessage::deconstruct_message(&delivery.body);
+                        println!("Recieved Message on the Deployment channel");
+
+                        println!("{} : Deployment {}\n\t{} : {}", node, message.deployment_id, message.deployment_status, message.deployment_status_description);
 
                         consumer.ack(delivery).expect("noack");
                     }
@@ -265,16 +322,48 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // deploy image
 
     let res = std::thread::spawn(move || {
-        let tmp_dir_path = "tmp/process";
 
-        let docker: Docker = Docker::connect_with_unix_defaults().unwrap();
         let container_guid = Uuid::new_v4().to_hyphenated().to_string();
+        let uri = "https://github.com/ethanshry/scapegoat.git";
+
+
+        let broker;
+
+
+        match RabbitBroker::new("amqp://localhost:5672") {
+            Some(b) => broker = b,
+            None => {
+                // TODO spin up service and try again
+                broker = RabbitBroker::new("amqp://localhost:5672").unwrap()
+            }
+        }
+
+        let publisher = broker.get_publisher();
+
+        let mut msg = DeploymentMessage::new(&container_guid);
+
+        publisher
+            .publish(Publish::new(
+                &msg.build_message(&system_uuid), 
+                "deployment"))
+            .unwrap();
+
+        // TODO make function to execute a thing in a tmp dir which auto-cleans itself
+        let tmp_dir_path = "tmp/process";
 
         println!("Creating Container {}", &container_guid);
 
+        msg.update_message(ApplicationStatus::RETRIEVING, &format!("Retrieving Application Data from {}", uri));
+
+        publisher
+            .publish(Publish::new(
+                &msg.build_message(&system_uuid), 
+                "deployment"))
+            .unwrap();
+
         println!("Cloning docker process...");
         clone_remote_branch(
-            "https://github.com/ethanshry/scapegoat.git",
+            uri,
             "master",
             tmp_dir_path,
         )
@@ -305,12 +394,91 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         println!("module path is {}", module_path!());
 
+        msg.update_message(ApplicationStatus::BUILDING, "");
+
+        publisher
+            .publish(Publish::new(
+                &msg.build_message(&system_uuid), 
+                "deployment"))
+            .unwrap();
+
         let res = Command::new("docker")
             .current_dir("tmp/process")
             .arg("build")
             .arg(".")
             .arg("-t")
-            .arg(&container_guid).spawn().expect("error in docker build");
+            .arg(&container_guid)
+            .output()
+            .expect("error in docker build");
+
+        println!("docker build status: {}", res.status);
+
+        // TODO write all build info to build log
+
+        if res.stderr.len() != 0 {
+            println!("Error in build");
+            msg.update_message(ApplicationStatus::ERRORED, "Error in build process");
+
+            publisher
+                .publish(Publish::new(
+                    &msg.build_message(&system_uuid), 
+                    "deployment"))
+                .unwrap();
+        } else {
+            msg.update_message(ApplicationStatus::DEPLOYING, "");
+
+            publisher
+                .publish(Publish::new(
+                    &msg.build_message(&system_uuid), 
+                    "deployment"))
+                .unwrap();
+
+            let res = Command::new("docker")
+                .arg("run")
+                .arg("-i")
+                .arg("-p")
+                .arg("9000:9000")
+                .arg("--name")
+                .arg(&container_guid)
+                .arg("-d")
+                .arg("-t")
+                .arg(&container_guid)
+                .output()
+                .expect("error in docker run");
+
+                // TODO write all deploy info to deploy log
+
+                println!("docker run status: {}", res.status);
+
+                if res.stderr.len() != 0 {
+                    println!("Error in deploy");
+                    msg.update_message(ApplicationStatus::ERRORED, "Error in deployment");
+        
+                    publisher
+                        .publish(Publish::new(
+                            &msg.build_message(&system_uuid), 
+                            "deployment"))
+                        .unwrap();
+                } else {
+
+                    println!("Docker container id: {}", &String::from_utf8_lossy(&res.stdout));
+
+                    msg.update_message(ApplicationStatus::DEPLOYED, "");
+
+                    publisher
+                        .publish(Publish::new(
+                            &msg.build_message(&system_uuid), 
+                            "deployment"))
+                        .unwrap();
+
+                        println!("Application instance {} deployed succesfully", &container_guid);
+                }
+
+        
+        }
+
+        // write stderr to stdout
+        //io::stderr().write_all(&res.stdout).unwrap();
 
         //let mut ball = fs::File::open(format!("/tmp/tar/{}", &container_guid)).unwrap();
 
