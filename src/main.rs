@@ -37,7 +37,7 @@ use git_utils::clone_remote_branch;
 use model::{
     ApplicationStatus, Orchestrator, OrchestratorInterface, Platform, Service, ServiceStatus,
 };
-use rabbit::{RabbitBroker, RabbitMessage, SysinfoMessage, DeploymentMessage};
+use rabbit::{DeploymentMessage, RabbitBroker, RabbitMessage, SysinfoMessage};
 use schema::Query;
 
 /// Kraken is a LAN-based deployment platform. It is designed to be highly flexible and easy to use.
@@ -51,58 +51,73 @@ use schema::Query;
 // https://crates.io/crates/reqwest
 
 // TODO build system_uuid into rabbit connection as a middlelayer before send
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // TODO get sysinfo from platform.toml
-    // TODO pull static site from git and put in static folder
 
-    clear_tmp();
-
-    // get uuid for system, or create one
-    let system_uuid;
-    match fs::read_to_string("id.txt") {
-        Ok(contents) => system_uuid = contents.parse::<String>().unwrap(),
+fn get_system_id() -> String {
+    return match fs::read_to_string("id.txt") {
+        Ok(contents) => contents.parse::<String>().unwrap(),
         Err(_) => {
             let mut file = fs::File::create("id.txt").unwrap();
             let contents = Uuid::new_v4();
             file.write_all(contents.to_hyphenated().to_string().as_bytes())
                 .unwrap();
-                system_uuid = contents.to_hyphenated().to_string()
+            contents.to_hyphenated().to_string()
         }
+    };
+}
+
+fn load_or_create_platform(db: &mut Database) -> Platform {
+    let platform = match fs::read_to_string("platform.json") {
+        Ok(contents) => serde_json::from_str(&contents).unwrap(),
+        Err(_) => Platform::new(
+            &vec![],
+            &Orchestrator::new(
+                OrchestratorInterface::new(
+                    Some(String::from("https://github.com/ethanshry/Kraken-UI.git")),
+                    None,
+                    ApplicationStatus::ERRORED,
+                )
+                .to_owned(),
+            ),
+            &vec![],
+        ),
+    };
+
+    db.update_orchestrator_interface(&platform.orchestrator.ui);
+
+    for node in &platform.nodes {
+        db.insert_node(&node);
     }
+
+    for deployment in &platform.deployments {
+        db.insert_deployment(&deployment);
+    }
+
+    return platform;
+}
+
+pub enum NODE_MODE {
+    WORKER,
+    ORCHESTRATOR,
+}
+
+fn get_node_mode() -> NODE_MODE {}
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // TODO get sysinfo from platform.toml
+    // TODO pull static site from git and put in static folder
+
+    // clear all tmp files
+    clear_tmp();
+
+    // get uuid for system, or create one
+    let system_uuid = get_system_id();
+
+    // determine if should be an orchestrator or a worker
 
     let mut db = Database::new();
 
-    let platform: Platform;
-    // TODO handle panic here
-    match fs::read_to_string("platform.json") {
-        Ok(contents) => platform = serde_json::from_str(&contents).unwrap(),
-        Err(_) => {
-            platform = Platform::new(
-                &vec![],
-                &Orchestrator::new(
-                    OrchestratorInterface::new(
-                        Some(String::from("https://github.com/ethanshry/Kraken-UI.git")),
-                        None,
-                        ApplicationStatus::ERRORED,
-                    )
-                    .to_owned(),
-                ),
-                &vec![],
-            );
-        }
-    }
+    let platform: Platform = load_or_create_platform(&mut db);
 
     println!("Platform: {:?}", platform);
-
-    db.update_orchestrator_interface(platform.orchestrator.ui);
-
-    for node in platform.nodes {
-        db.insert_node(node);
-    }
-
-    for deployment in platform.deployments {
-        db.insert_deployment(deployment);
-    }
 
     let db_ref = Arc::new(Mutex::new(db));
 
@@ -177,7 +192,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let system_uuid = system_uuid.clone();
 
         system_status_proc = std::thread::spawn(move || {
-            
             let broker;
 
             match RabbitBroker::new("amqp://localhost:5672") {
@@ -207,16 +221,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 std::thread::sleep(std::time::Duration::new(5, 0));
                 let system = sysinfo::System::new_all();
                 msg.update_message(
-                    system.get_free_memory(), 
-                    system.get_used_memory(), 
-                    system.get_uptime(), 
-                    system.get_load_average().five as f32
+                    system.get_free_memory(),
+                    system.get_used_memory(),
+                    system.get_uptime(),
+                    system.get_load_average().five as f32,
                 );
-                
                 publisher
-                    .publish(Publish::new(
-                        &msg.build_message(&system_uuid), 
-                        "sysinfo"))
+                    .publish(Publish::new(&msg.build_message(&system_uuid), "sysinfo"))
                     .unwrap();
             }
         });
@@ -257,9 +268,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 message.uptime,
                                 message.load_avg_5,
                             );
-                            db.insert_node(new_node);
+                            db.insert_node(&new_node);
                         } else {
-                            db.insert_node(model::Node::from_incomplete(
+                            let new_node = model::Node::from_incomplete(
                                 &node,
                                 None,
                                 Some(message.ram_free),
@@ -268,7 +279,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 Some(message.load_avg_5),
                                 None,
                                 None,
-                            ));
+                            );
+                            db.insert_node(&new_node);
                         }
 
                         consumer.ack(delivery).expect("noack");
@@ -303,10 +315,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             for (_, message) in consumer.receiver().iter().enumerate() {
                 match message {
                     ConsumerMessage::Delivery(delivery) => {
-                        let (node, message) = DeploymentMessage::deconstruct_message(&delivery.body);
+                        let (node, message) =
+                            DeploymentMessage::deconstruct_message(&delivery.body);
                         println!("Recieved Message on the Deployment channel");
 
-                        println!("{} : Deployment {}\n\t{} : {}", node, message.deployment_id, message.deployment_status, message.deployment_status_description);
+                        println!(
+                            "{} : Deployment {}\n\t{} : {}",
+                            node,
+                            message.deployment_id,
+                            message.deployment_status,
+                            message.deployment_status_description
+                        );
 
                         consumer.ack(delivery).expect("noack");
                     }
@@ -322,13 +341,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // deploy image
 
     let res = std::thread::spawn(move || {
-
         let container_guid = Uuid::new_v4().to_hyphenated().to_string();
         let uri = "https://github.com/ethanshry/scapegoat.git";
 
-
         let broker;
-
 
         match RabbitBroker::new("amqp://localhost:5672") {
             Some(b) => broker = b,
@@ -343,9 +359,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let mut msg = DeploymentMessage::new(&container_guid);
 
         publisher
-            .publish(Publish::new(
-                &msg.build_message(&system_uuid), 
-                "deployment"))
+            .publish(Publish::new(&msg.build_message(&system_uuid), "deployment"))
             .unwrap();
 
         // TODO make function to execute a thing in a tmp dir which auto-cleans itself
@@ -353,22 +367,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         println!("Creating Container {}", &container_guid);
 
-        msg.update_message(ApplicationStatus::RETRIEVING, &format!("Retrieving Application Data from {}", uri));
+        msg.update_message(
+            ApplicationStatus::RETRIEVING,
+            &format!("Retrieving Application Data from {}", uri),
+        );
 
         publisher
-            .publish(Publish::new(
-                &msg.build_message(&system_uuid), 
-                "deployment"))
+            .publish(Publish::new(&msg.build_message(&system_uuid), "deployment"))
             .unwrap();
 
         println!("Cloning docker process...");
-        clone_remote_branch(
-            uri,
-            "master",
-            tmp_dir_path,
-        )
-        .wait()
-        .unwrap();
+        clone_remote_branch(uri, "master", tmp_dir_path)
+            .wait()
+            .unwrap();
 
         // Inject the proper dockerfile into the project
         // TODO read this from the project's toml file
@@ -397,9 +408,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         msg.update_message(ApplicationStatus::BUILDING, "");
 
         publisher
-            .publish(Publish::new(
-                &msg.build_message(&system_uuid), 
-                "deployment"))
+            .publish(Publish::new(&msg.build_message(&system_uuid), "deployment"))
             .unwrap();
 
         let res = Command::new("docker")
@@ -420,17 +429,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             msg.update_message(ApplicationStatus::ERRORED, "Error in build process");
 
             publisher
-                .publish(Publish::new(
-                    &msg.build_message(&system_uuid), 
-                    "deployment"))
+                .publish(Publish::new(&msg.build_message(&system_uuid), "deployment"))
                 .unwrap();
         } else {
             msg.update_message(ApplicationStatus::DEPLOYING, "");
 
             publisher
-                .publish(Publish::new(
-                    &msg.build_message(&system_uuid), 
-                    "deployment"))
+                .publish(Publish::new(&msg.build_message(&system_uuid), "deployment"))
                 .unwrap();
 
             let res = Command::new("docker")
@@ -446,35 +451,34 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .output()
                 .expect("error in docker run");
 
-                // TODO write all deploy info to deploy log
+            // TODO write all deploy info to deploy log
 
-                println!("docker run status: {}", res.status);
+            println!("docker run status: {}", res.status);
 
-                if res.stderr.len() != 0 {
-                    println!("Error in deploy");
-                    msg.update_message(ApplicationStatus::ERRORED, "Error in deployment");
-        
-                    publisher
-                        .publish(Publish::new(
-                            &msg.build_message(&system_uuid), 
-                            "deployment"))
-                        .unwrap();
-                } else {
+            if res.stderr.len() != 0 {
+                println!("Error in deploy");
+                msg.update_message(ApplicationStatus::ERRORED, "Error in deployment");
 
-                    println!("Docker container id: {}", &String::from_utf8_lossy(&res.stdout));
+                publisher
+                    .publish(Publish::new(&msg.build_message(&system_uuid), "deployment"))
+                    .unwrap();
+            } else {
+                println!(
+                    "Docker container id: {}",
+                    &String::from_utf8_lossy(&res.stdout)
+                );
 
-                    msg.update_message(ApplicationStatus::DEPLOYED, "");
+                msg.update_message(ApplicationStatus::DEPLOYED, "");
 
-                    publisher
-                        .publish(Publish::new(
-                            &msg.build_message(&system_uuid), 
-                            "deployment"))
-                        .unwrap();
+                publisher
+                    .publish(Publish::new(&msg.build_message(&system_uuid), "deployment"))
+                    .unwrap();
 
-                        println!("Application instance {} deployed succesfully", &container_guid);
-                }
-
-        
+                println!(
+                    "Application instance {} deployed succesfully",
+                    &container_guid
+                );
+            }
         }
 
         // write stderr to stdout

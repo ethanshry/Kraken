@@ -58,7 +58,7 @@ impl Database {
         self.orchestrator.clone()
     }
 
-    pub fn update_orchestrator_interface(&mut self, o: OrchestratorInterface) {
+    pub fn update_orchestrator_interface(&mut self, o: &OrchestratorInterface) {
         self.orchestrator.ui = o.to_owned()
     }
 
@@ -81,9 +81,9 @@ impl Database {
         self.nodes.get(node_id)
     }
 
-    pub fn insert_node(&mut self, node: Node) -> Option<Node> {
+    pub fn insert_node(&mut self, node: &Node) -> Option<Node> {
         println!("inserting {}", node.id);
-        self.nodes.insert(node.id.to_owned(), node)
+        self.nodes.insert(node.id.to_owned(), node.to_owned())
     }
 
     pub fn get_nodes(&self) -> Option<Vec<Node>> {
@@ -103,10 +103,10 @@ impl Database {
         self.deployments.get(deployment_id)
     }
 
-    pub fn insert_deployment(&mut self, deployment: Deployment) -> Option<Deployment> {
+    pub fn insert_deployment(&mut self, deployment: &Deployment) -> Option<Deployment> {
         println!("inserting {}", deployment.id);
         self.deployments
-            .insert(deployment.id.to_owned(), deployment)
+            .insert(deployment.id.to_owned(), deployment.to_owned())
     }
 
     pub fn get_deployments(&self) -> Option<Vec<Deployment>> {
