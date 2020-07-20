@@ -95,12 +95,17 @@ fn load_or_create_platform(db: &mut Database) -> Platform {
     return platform;
 }
 
-pub enum NODE_MODE {
+#[derive(Debug, Clone)]
+pub enum NodeMode {
     WORKER,
     ORCHESTRATOR,
 }
 
-fn get_node_mode() -> NODE_MODE {}
+// TODO implement
+fn get_node_mode() -> NodeMode {
+    NodeMode::ORCHESTRATOR
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // TODO get sysinfo from platform.toml
     // TODO pull static site from git and put in static folder
@@ -112,6 +117,38 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let system_uuid = get_system_id();
 
     // determine if should be an orchestrator or a worker
+    let mode = get_node_mode();
+
+    match mode {
+        NodeMode::WORKER => {
+            // connect to rabbit
+
+            // post system status
+
+            // deploy docker services if requested
+        }
+        NodeMode::ORCHESTRATOR => {
+            // deploy rabbitmq
+
+            // establish db connection
+
+            // download site
+
+            // setup dns records
+
+            // consume system log queues
+
+            // consume system status queues
+
+            // wrap work sender queue
+
+            // launch rocket
+
+            // monitor git
+
+            // deploy docker services if determined to be best practice
+        }
+    };
 
     let mut db = Database::new();
 
