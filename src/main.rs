@@ -2,13 +2,14 @@
 
 //#[macro_use]
 //extern crate juniper; // = import external crate? why do I not need rocket, etc?
+mod docker;
+mod rabbit;
 
 mod db; // looks for a file named "db.rs" and implicitly wraps it in a mod db {}
 mod file_utils;
 mod git_utils;
 mod gitapi;
 mod model;
-mod rabbit;
 mod routes;
 mod schema;
 
@@ -20,7 +21,6 @@ extern crate strum;
 extern crate juniper;
 extern crate strum_macros;
 
-use amiquip::{ConsumerMessage, Publish};
 use juniper::EmptyMutation;
 use std::fs;
 use std::io::prelude::*;
@@ -31,13 +31,16 @@ use strum_macros::{Display, EnumIter};
 use sysinfo::SystemExt;
 use uuid::Uuid;
 
+use crate::rabbit::{
+    deployment_message::DeploymentMessage, sysinfo_message::SysinfoMessage, RabbitBroker,
+    RabbitMessage,
+};
 use db::{Database, ManagedDatabase};
 use file_utils::{clear_tmp, copy_dir_contents_to_static, copy_dockerfile_to_dir};
 use git_utils::clone_remote_branch;
 use model::{
     ApplicationStatus, Orchestrator, OrchestratorInterface, Platform, Service, ServiceStatus,
 };
-use rabbit::{DeploymentMessage, RabbitBroker, RabbitMessage, SysinfoMessage};
 use schema::Query;
 
 /// Kraken is a LAN-based deployment platform. It is designed to be highly flexible and easy to use.
@@ -106,8 +109,66 @@ fn get_node_mode() -> NodeMode {
     NodeMode::ORCHESTRATOR
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // TODO get sysinfo from platform.toml
+#[tokio::main]
+async fn main() -> Result<(), ()> {
+    // TODO pull static site from git and put in static folder
+
+    // clear all tmp files
+    clear_tmp();
+
+    // get uuid for system, or create one
+    let system_uuid = get_system_id();
+
+    // determine if should be an orchestrator or a worker
+    let mode = get_node_mode();
+
+    match mode {
+        NodeMode::WORKER => {
+            // connect to rabbit
+
+            // post system status
+
+            // deploy docker services if requested
+        }
+        NodeMode::ORCHESTRATOR => {
+            // deploy rabbitmq
+
+            // connect to rabbit
+
+            // establish db connection
+
+            // download site
+
+            // setup dns records
+
+            // consume system log queues
+
+            // consume system status queues
+
+            // wrap work sender queue
+
+            // launch rocket
+
+            // monitor git
+
+            // deploy docker services if determined to be best practice
+        }
+    };
+
+    let mut db = Database::new();
+
+    let platform: Platform = load_or_create_platform(&mut db);
+
+    println!("Platform: {:?}", platform);
+
+    let db_ref = Arc::new(Mutex::new(db));
+    Ok(())
+}
+
+/*
+
+
+// TODO get sysinfo from platform.toml
     // TODO pull static site from git and put in static folder
 
     // clear all tmp files
@@ -563,4 +624,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     system_status_proc.join().unwrap();
     rabbit_consumer_proc.join().unwrap();
     Ok(())
-}
+
+
+*/
