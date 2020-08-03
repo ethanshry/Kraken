@@ -130,6 +130,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         NodeMode::ORCHESTRATOR => {
             // deploy rabbitmq
 
+            // connect to rabbit
+
             // establish db connection
 
             // download site
