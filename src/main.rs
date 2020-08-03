@@ -1,6 +1,7 @@
 #![feature(proc_macro_hygiene, decl_macro)]
 
-//#[macro_use]
+#[macro_use]
+extern crate rocket;
 //extern crate juniper; // = import external crate? why do I not need rocket, etc?
 mod docker;
 mod rabbit;
@@ -12,6 +13,7 @@ mod gitapi;
 mod model;
 mod routes;
 mod schema;
+mod utils;
 
 extern crate fs_extra;
 extern crate serde;
@@ -21,7 +23,20 @@ extern crate strum;
 extern crate juniper;
 extern crate strum_macros;
 
+use crate::rabbit::{
+    deployment_message::DeploymentMessage, sysinfo_message::SysinfoMessage, RabbitBroker,
+    RabbitMessage,
+};
+use db::{Database, ManagedDatabase};
+use dotenv;
+use file_utils::{clear_tmp, copy_dir_contents_to_static, copy_dockerfile_to_dir};
+use futures_util::stream::StreamExt;
+use git_utils::clone_remote_branch;
 use juniper::EmptyMutation;
+use model::{
+    ApplicationStatus, Orchestrator, OrchestratorInterface, Platform, Service, ServiceStatus,
+};
+use schema::Query;
 use std::fs;
 use std::io::prelude::*;
 use std::io::{self, Write};
@@ -30,18 +45,6 @@ use std::sync::{Arc, Mutex};
 use strum_macros::{Display, EnumIter};
 use sysinfo::SystemExt;
 use uuid::Uuid;
-
-use crate::rabbit::{
-    deployment_message::DeploymentMessage, sysinfo_message::SysinfoMessage, RabbitBroker,
-    RabbitMessage,
-};
-use db::{Database, ManagedDatabase};
-use file_utils::{clear_tmp, copy_dir_contents_to_static, copy_dockerfile_to_dir};
-use git_utils::clone_remote_branch;
-use model::{
-    ApplicationStatus, Orchestrator, OrchestratorInterface, Platform, Service, ServiceStatus,
-};
-use schema::Query;
 
 /// Kraken is a LAN-based deployment platform. It is designed to be highly flexible and easy to use.
 /// TODO actually write this documentation
@@ -55,49 +58,6 @@ use schema::Query;
 
 // TODO build system_uuid into rabbit connection as a middlelayer before send
 
-fn get_system_id() -> String {
-    return match fs::read_to_string("id.txt") {
-        Ok(contents) => contents.parse::<String>().unwrap(),
-        Err(_) => {
-            let mut file = fs::File::create("id.txt").unwrap();
-            let contents = Uuid::new_v4();
-            file.write_all(contents.to_hyphenated().to_string().as_bytes())
-                .unwrap();
-            contents.to_hyphenated().to_string()
-        }
-    };
-}
-
-fn load_or_create_platform(db: &mut Database) -> Platform {
-    let platform = match fs::read_to_string("platform.json") {
-        Ok(contents) => serde_json::from_str(&contents).unwrap(),
-        Err(_) => Platform::new(
-            &vec![],
-            &Orchestrator::new(
-                OrchestratorInterface::new(
-                    Some(String::from("https://github.com/ethanshry/Kraken-UI.git")),
-                    None,
-                    ApplicationStatus::ERRORED,
-                )
-                .to_owned(),
-            ),
-            &vec![],
-        ),
-    };
-
-    db.update_orchestrator_interface(&platform.orchestrator.ui);
-
-    for node in &platform.nodes {
-        db.insert_node(&node);
-    }
-
-    for deployment in &platform.deployments {
-        db.insert_deployment(&deployment);
-    }
-
-    return platform;
-}
-
 #[derive(Debug, Clone)]
 pub enum NodeMode {
     WORKER,
@@ -106,35 +66,78 @@ pub enum NodeMode {
 
 // TODO implement
 fn get_node_mode() -> NodeMode {
-    NodeMode::ORCHESTRATOR
+    match std::env::var("NODE_MODE")
+        .unwrap_or(String::from("WORKER"))
+        .as_str()
+    {
+        "ORCHESTRATOR" => NodeMode::ORCHESTRATOR,
+        _ => NodeMode::WORKER,
+    }
+}
+
+pub enum QueueLabel {
+    Sysinfo,
+    Deployment,
+}
+
+impl QueueLabel {
+    // cool pattern from https://users.rust-lang.org/t/noob-enum-string-with-symbols-resolved/7668/2
+    pub fn as_str(&self) -> &'static str {
+        match *self {
+            QueueLabel::Sysinfo => "sysinfo",
+            QueueLabel::Deployment => "deployment",
+        }
+    }
 }
 
 #[tokio::main]
 async fn main() -> Result<(), ()> {
+    dotenv::dotenv().ok();
+    env_logger::init();
+    let addr: String =
+        std::env::var("AMQP_ADDR").unwrap_or_else(|_| "amqp://127.0.0.1:5672".into());
+
     // TODO pull static site from git and put in static folder
 
     // clear all tmp files
     clear_tmp();
 
     // get uuid for system, or create one
-    let system_uuid = get_system_id();
+    let system_uuid = utils::get_system_id();
 
     // determine if should be an orchestrator or a worker
     let mode = get_node_mode();
 
+    let broker: RabbitBroker = match mode {
+        // Connect directly to rabbit
+        NodeMode::WORKER => match RabbitBroker::new(&addr).await {
+            Some(b) => b,
+            None => panic!("Could not establish rabbit connection"),
+        },
+        // Deploy rabbit then connect
+        NodeMode::ORCHESTRATOR => {
+            // TODO Deploy rabbit
+            let broker = match RabbitBroker::new(&addr).await {
+                Some(b) => b,
+                None => panic!("Could not establish rabbit connection"),
+            };
+
+            // deploy queues
+
+            broker.declare_queue(QueueLabel::Sysinfo.as_str()).await;
+            broker.declare_queue(QueueLabel::Deployment.as_str()).await;
+
+            broker
+        }
+    };
+
     match mode {
         NodeMode::WORKER => {
-            // connect to rabbit
-
             // post system status
 
             // deploy docker services if requested
         }
         NodeMode::ORCHESTRATOR => {
-            // deploy rabbitmq
-
-            // connect to rabbit
-
             // establish db connection
 
             // download site
@@ -157,65 +160,7 @@ async fn main() -> Result<(), ()> {
 
     let mut db = Database::new();
 
-    let platform: Platform = load_or_create_platform(&mut db);
-
-    println!("Platform: {:?}", platform);
-
-    let db_ref = Arc::new(Mutex::new(db));
-    Ok(())
-}
-
-/*
-
-
-// TODO get sysinfo from platform.toml
-    // TODO pull static site from git and put in static folder
-
-    // clear all tmp files
-    clear_tmp();
-
-    // get uuid for system, or create one
-    let system_uuid = get_system_id();
-
-    // determine if should be an orchestrator or a worker
-    let mode = get_node_mode();
-
-    match mode {
-        NodeMode::WORKER => {
-            // connect to rabbit
-
-            // post system status
-
-            // deploy docker services if requested
-        }
-        NodeMode::ORCHESTRATOR => {
-            // deploy rabbitmq
-
-            // connect to rabbit
-
-            // establish db connection
-
-            // download site
-
-            // setup dns records
-
-            // consume system log queues
-
-            // consume system status queues
-
-            // wrap work sender queue
-
-            // launch rocket
-
-            // monitor git
-
-            // deploy docker services if determined to be best practice
-        }
-    };
-
-    let mut db = Database::new();
-
-    let platform: Platform = load_or_create_platform(&mut db);
+    let platform: Platform = utils::load_or_create_platform(&mut db);
 
     println!("Platform: {:?}", platform);
 
@@ -225,7 +170,7 @@ async fn main() -> Result<(), ()> {
     {
         let arc = db_ref.clone();
 
-        static_site_download_proc = std::thread::spawn(move || {
+        static_site_download_proc = tokio::spawn(async move {
             let git_data =
                 gitapi::GitApi::get_tail_commits_for_repo_branches("ethanshry", "kraken-ui");
 
@@ -282,41 +227,30 @@ async fn main() -> Result<(), ()> {
             println!("Kraken-UI is now available at commit SHA: {}", sha);
         });
     }
-
     // Thread to post sysinfo every 5 seconds
     let system_status_proc;
     {
-        // TODO do I need this???
         let arc = db_ref.clone();
-
+        let producer = broker.get_channel().await;
         let system_uuid = system_uuid.clone();
+        let addr = addr.clone();
 
-        system_status_proc = std::thread::spawn(move || {
-            let broker;
+        let publisher = broker.get_channel().await;
 
-            match RabbitBroker::new("amqp://localhost:5672") {
-                Some(b) => broker = b,
-                None => {
-                    // TODO spin up service and try again
-                    broker = RabbitBroker::new("amqp://localhost:5672").unwrap()
-                }
-            }
-
+        system_status_proc = tokio::spawn(async move {
             // closure for auto unlock
             || -> () {
                 let mut db = arc.lock().unwrap();
                 db.add_platform_service(Service::new(
                     "rabbitmq",
                     "0.1.0",
-                    "amqp://localhost:5672",
+                    &addr,
                     ServiceStatus::OK,
                 ))
                 .unwrap();
             }();
 
-            let publisher = broker.get_publisher();
-
-            let mut msg = SysinfoMessage::new();
+            let mut msg = SysinfoMessage::new(&system_uuid);
             loop {
                 std::thread::sleep(std::time::Duration::new(5, 0));
                 let system = sysinfo::System::new_all();
@@ -326,114 +260,89 @@ async fn main() -> Result<(), ()> {
                     system.get_uptime(),
                     system.get_load_average().five as f32,
                 );
-                publisher
-                    .publish(Publish::new(&msg.build_message(&system_uuid), "sysinfo"))
-                    .unwrap();
+                msg.send(&publisher, QueueLabel::Sysinfo.as_str()).await;
             }
         });
     }
 
-    // Thread to consume sysinfo queue
-    let rabbit_consumer_proc;
-    {
+    let sysinfo_consumer = {
         let arc = db_ref.clone();
-        let broker;
 
         let system_uuid = system_uuid.clone();
 
-        match RabbitBroker::new("amqp://localhost:5672") {
-            Some(b) => broker = b,
-            None => {
-                // TODO spin up service and try again
-                broker = RabbitBroker::new("amqp://localhost:5672").unwrap()
+        let handler = move |data: Vec<u8>| {
+            let (node, message) = SysinfoMessage::deconstruct_message(&data);
+            info!("Recieved Message on the Sysinfo channel");
+
+            // TODO clean up all this unsafe unwrapping
+            let mut db = arc.lock().unwrap();
+            if let Some(n) = db.get_node(&node) {
+                let mut new_node = n.clone();
+                new_node.set_id(&node);
+                new_node.update(
+                    message.ram_free,
+                    message.ram_used,
+                    message.uptime,
+                    message.load_avg_5,
+                );
+                db.insert_node(&new_node);
+            } else {
+                let new_node = model::Node::from_incomplete(
+                    &node,
+                    None,
+                    Some(message.ram_free),
+                    Some(message.ram_used),
+                    Some(message.uptime),
+                    Some(message.load_avg_5),
+                    None,
+                    None,
+                );
+                db.insert_node(&new_node);
             }
-        }
-        rabbit_consumer_proc = std::thread::spawn(move || {
-            let consumer = broker.get_consumer("sysinfo");
+            return ();
+        };
 
-            for (_, message) in consumer.receiver().iter().enumerate() {
-                match message {
-                    ConsumerMessage::Delivery(delivery) => {
-                        let (node, message) = SysinfoMessage::deconstruct_message(&delivery.body);
-                        println!("Recieved Message on the Sysinfo channel");
+        tokio::spawn(async move {
+            broker
+                .consume_queue(&system_uuid, QueueLabel::Sysinfo.as_str(), &handler)
+                .await;
+        })
+    };
 
-                        // TODO clean up all this unsafe unwrapping
-                        let mut db = arc.lock().unwrap();
-                        if let Some(n) = db.get_node(&node) {
-                            let mut new_node = n.clone();
-                            new_node.set_id(&node);
-                            new_node.update(
-                                message.ram_free,
-                                message.ram_used,
-                                message.uptime,
-                                message.load_avg_5,
-                            );
-                            db.insert_node(&new_node);
-                        } else {
-                            let new_node = model::Node::from_incomplete(
-                                &node,
-                                None,
-                                Some(message.ram_free),
-                                Some(message.ram_used),
-                                Some(message.uptime),
-                                Some(message.load_avg_5),
-                                None,
-                                None,
-                            );
-                            db.insert_node(&new_node);
-                        }
-
-                        consumer.ack(delivery).expect("noack");
-                    }
-                    other => {
-                        println!("Consumer ended: {:?}", other);
-                        break;
-                    }
-                }
-            }
-        });
-    }
-
+    /*
     // Thread to consume deployment queue
-    let rabbit_consumer_proc;
+    let deployment_consumer;
     {
         let arc = db_ref.clone();
-        let broker;
 
         let system_uuid = system_uuid.clone();
 
-        match RabbitBroker::new("amqp://localhost:5672") {
-            Some(b) => broker = b,
-            None => {
-                // TODO spin up service and try again
-                broker = RabbitBroker::new("amqp://localhost:5672").unwrap()
-            }
-        }
-        rabbit_consumer_proc = std::thread::spawn(move || {
-            let consumer = broker.get_consumer("deployment");
+        let consumer_channel = broker.get_channel().await;
 
-            for (_, message) in consumer.receiver().iter().enumerate() {
-                match message {
-                    ConsumerMessage::Delivery(delivery) => {
-                        let (node, message) =
-                            DeploymentMessage::deconstruct_message(&delivery.body);
-                        println!("Recieved Message on the Deployment channel");
+        rabbit_consumer_proc = tokio::spawn(async move {
+            let mut consumer = RabbitBroker::get_consumer(
+                &consumer_channel,
+                QueueLabel::Deployment.as_str(),
+                &addr,
+            )
+            .await;
 
-                        println!(
-                            "{} : Deployment {}\n\t{} : {}",
-                            node,
-                            message.deployment_id,
-                            message.deployment_status,
-                            message.deployment_status_description
-                        );
+            while let Some(delivery) = consumer.next().await {
+                let (channel, delivery) = delivery.expect("error in consumer");
+                RabbitBroker::ack(&channel, delivery.delivery_tag).await;
 
-                        consumer.ack(delivery).expect("noack");
-                    }
-                    other => {
-                        println!("Consumer ended: {:?}", other);
-                        break;
-                    }
-                }
+                let (node, message) = DeploymentMessage::deconstruct_message(&delivery.data);
+                println!("Recieved Message on the Deployment channel");
+
+                println!(
+                    "{} : Deployment {}\n\t{} : {}",
+                    node,
+                    message.deployment_id,
+                    message.deployment_status,
+                    message.deployment_status_description
+                );
+
+                consumer.ack(delivery).expect("noack");
             }
         });
     }
@@ -603,7 +512,7 @@ async fn main() -> Result<(), ()> {
         */
         //res.try_collect().await;
     });
-
+    */
     // launch the API server
     rocket::ignite()
         .manage(ManagedDatabase::new(db_ref.clone()))
@@ -619,11 +528,8 @@ async fn main() -> Result<(), ()> {
             ],
         )
         .launch();
-
-    static_site_download_proc.join().unwrap();
-    system_status_proc.join().unwrap();
-    rabbit_consumer_proc.join().unwrap();
+    static_site_download_proc.await;
+    system_status_proc.await;
+    //rabbit_consumer_proc.await;
     Ok(())
-
-
-*/
+}

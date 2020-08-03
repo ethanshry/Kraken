@@ -1,4 +1,3 @@
-
 pub mod deployment_message;
 pub mod sysinfo_message;
 use async_trait::async_trait;
@@ -7,6 +6,7 @@ use lapin::{
     options::*, publisher_confirm::Confirmation, types::FieldTable, BasicProperties, Connection,
     ConnectionProperties, Result,
 };
+use std::future::Future;
 use std::iter::FromIterator;
 use std::str::FromStr;
 use std::string::ToString;
@@ -116,6 +116,21 @@ impl RabbitBroker {
             .basic_ack(tag, BasicAckOptions::default())
             .await
             .expect("ack")
+    }
+
+    // TODO dive into dyn
+    pub async fn consume_queue<F>(&self, consumer_tag: &str, queue_label: &str, handler: F)
+    where
+        F: Fn(Vec<u8>) -> (),
+    {
+        let consumer_channel = self.get_channel().await;
+        let mut consumer = Self::get_consumer(&consumer_channel, queue_label, consumer_tag).await;
+        while let Some(delivery) = consumer.next().await {
+            let (channel, delivery) = delivery.expect("error in consumer");
+            let data = delivery.data;
+            RabbitBroker::ack(&channel, delivery.delivery_tag).await;
+            handler(data);
+        }
     }
 }
 
