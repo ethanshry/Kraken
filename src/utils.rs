@@ -1,7 +1,7 @@
 use crate::db::Database;
 use crate::model::{ApplicationStatus, Orchestrator, OrchestratorInterface, Platform};
 use std::fs;
-use std::io::{self, Write};
+use std::io::Write;
 use uuid::Uuid;
 
 pub fn get_system_id() -> String {

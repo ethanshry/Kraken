@@ -1,7 +1,7 @@
 #![feature(proc_macro_hygiene, decl_macro)]
 
-#[macro_use]
-extern crate rocket;
+//#[macro_use]
+//extern crate rocket;
 //extern crate juniper; // = import external crate? why do I not need rocket, etc?
 mod docker;
 mod rabbit;
@@ -14,6 +14,7 @@ mod model;
 mod routes;
 mod schema;
 mod utils;
+mod worker;
 
 extern crate fs_extra;
 extern crate serde;
@@ -23,26 +24,19 @@ extern crate strum;
 extern crate juniper;
 extern crate strum_macros;
 
-use crate::rabbit::{
-    deployment_message::DeploymentMessage, sysinfo_message::SysinfoMessage, RabbitBroker,
-    RabbitMessage,
-};
 use db::{Database, ManagedDatabase};
 use dotenv;
 use file_utils::{clear_tmp, copy_dir_contents_to_static, copy_dockerfile_to_dir};
 use futures_util::stream::StreamExt;
 use git_utils::clone_remote_branch;
 use juniper::EmptyMutation;
-use model::{
-    ApplicationStatus, Orchestrator, OrchestratorInterface, Platform, Service, ServiceStatus,
-};
+use log::info;
+use model::{ApplicationStatus, Platform, Service, ServiceStatus};
+use rabbit::{sysinfo_message::SysinfoMessage, QueueLabel, RabbitBroker, RabbitMessage};
 use schema::Query;
 use std::fs;
-use std::io::prelude::*;
-use std::io::{self, Write};
 use std::process::Command;
 use std::sync::{Arc, Mutex};
-use strum_macros::{Display, EnumIter};
 use sysinfo::SystemExt;
 use uuid::Uuid;
 
@@ -75,21 +69,6 @@ fn get_node_mode() -> NodeMode {
     }
 }
 
-pub enum QueueLabel {
-    Sysinfo,
-    Deployment,
-}
-
-impl QueueLabel {
-    // cool pattern from https://users.rust-lang.org/t/noob-enum-string-with-symbols-resolved/7668/2
-    pub fn as_str(&self) -> &'static str {
-        match *self {
-            QueueLabel::Sysinfo => "sysinfo",
-            QueueLabel::Deployment => "deployment",
-        }
-    }
-}
-
 #[tokio::main]
 async fn main() -> Result<(), ()> {
     dotenv::dotenv().ok();
@@ -104,6 +83,8 @@ async fn main() -> Result<(), ()> {
 
     // get uuid for system, or create one
     let system_uuid = utils::get_system_id();
+    // TODO How should I handle this type of thing?
+    std::env::set_var("SYSID", system_uuid);
 
     // determine if should be an orchestrator or a worker
     let mode = get_node_mode();
@@ -139,18 +120,171 @@ async fn main() -> Result<(), ()> {
         }
         NodeMode::ORCHESTRATOR => {
             // establish db connection
+            let mut db = Database::new();
+
+            let platform: Platform = utils::load_or_create_platform(&mut db);
+
+            println!("Platform: {:?}", platform);
+
+            let db_ref = Arc::new(Mutex::new(db));
 
             // download site
+            let static_site_download_proc;
+            {
+                let arc = db_ref.clone();
+
+                static_site_download_proc = tokio::spawn(async move {
+                    let git_data = gitapi::GitApi::get_tail_commits_for_repo_branches(
+                        "ethanshry",
+                        "kraken-ui",
+                    );
+
+                    let mut sha = String::from("");
+
+                    let should_update_ui = match git_data {
+                        Some(data) => {
+                            let mut flag = true;
+                            for branch in data {
+                                if branch.name == "build" {
+                                    let db = arc.lock().unwrap();
+                                    let active_branch = db.get_orchestrator().ui.cloned_commit;
+                                    // unlock db
+                                    drop(db);
+                                    match active_branch {
+                                        Some(b) => {
+                                            if branch.commit.sha == b {
+                                                flag = false;
+                                                sha = b.clone();
+                                            } else {
+                                                sha = branch.commit.sha;
+                                            }
+                                        }
+                                        None => {
+                                            sha = branch.commit.sha.clone();
+                                        }
+                                    }
+                                    break;
+                                }
+                            }
+                            flag
+                        }
+                        None => true,
+                    };
+
+                    if sha == "" {
+                        println!("No build branch found, cannot update kraken-ui");
+                        return;
+                    }
+
+                    if should_update_ui {
+                        println!("Cloning updated UI...");
+                        clone_remote_branch(
+                            "https://github.com/ethanshry/Kraken-UI.git",
+                            "build",
+                            "tmp/site",
+                        )
+                        .wait()
+                        .unwrap();
+                        copy_dir_contents_to_static("tmp/site/build");
+                        fs::remove_dir_all("tmp/site").unwrap();
+                    }
+
+                    println!("Kraken-UI is now available at commit SHA: {}", sha);
+                });
+            }
 
             // setup dns records
 
             // consume system log queues
 
-            // consume system status queues
+            // consumer sysinfo queue
+            let sysinfo_consumer = {
+                let arc = db_ref.clone();
+                let system_uuid = system_uuid.clone();
+                let handler = move |data: Vec<u8>| {
+                    let (node, message) = SysinfoMessage::deconstruct_message(&data);
+                    info!("Recieved Message on the Sysinfo channel");
+                    // TODO clean up all this unsafe unwrapping
+                    let mut db = arc.lock().unwrap();
+                    if let Some(n) = db.get_node(&node) {
+                        let mut new_node = n.clone();
+                        new_node.set_id(&node);
+                        new_node.update(
+                            message.ram_free,
+                            message.ram_used,
+                            message.uptime,
+                            message.load_avg_5,
+                        );
+                        db.insert_node(&new_node);
+                    } else {
+                        let new_node = model::Node::from_incomplete(
+                            &node,
+                            None,
+                            Some(message.ram_free),
+                            Some(message.ram_used),
+                            Some(message.uptime),
+                            Some(message.load_avg_5),
+                            None,
+                            None,
+                        );
+                        db.insert_node(&new_node);
+                    }
+                    return ();
+                };
+                tokio::spawn(async move {
+                    broker
+                        .consume_queue(&system_uuid, QueueLabel::Sysinfo.as_str(), &handler)
+                        .await;
+                })
+            };
 
-            // wrap work sender queue
+            // consume deployment status queue
+            let deployment_consumer = {
+                let arc = db_ref.clone();
+
+                let system_uuid = system_uuid.clone();
+
+                let handler = move |data: Vec<u8>| {
+                    let (node, message) = SysinfoMessage::deconstruct_message(&data);
+                    let (node, message) = DeploymentMessage::deconstruct_message(&data);
+                    info!("Recieved Message on the Deployment channel");
+
+                    info!(
+                        "{} : Deployment {}\n\t{} : {}",
+                        node,
+                        message.deployment_id,
+                        message.deployment_status,
+                        message.deployment_status_description
+                    );
+                    return ();
+                };
+
+                tokio::spawn(async move {
+                    broker
+                        .consume_queue(&system_uuid, QueueLabel::Sysinfo.as_str(), &handler)
+                        .await;
+                })
+            };
+            // work sender queue
 
             // launch rocket
+            let server = tokio::spawn(async move {
+                static_site_download_proc.await;
+                rocket::ignite()
+                    .manage(ManagedDatabase::new(db_ref.clone()))
+                    .manage(routes::Schema::new(Query, EmptyMutation::<Database>::new()))
+                    .mount(
+                        "/",
+                        rocket::routes![
+                            routes::root,
+                            routes::graphiql,
+                            routes::get_graphql_handler,
+                            routes::post_graphql_handler,
+                            routes::site
+                        ],
+                    )
+                    .launch();
+            });
 
             // monitor git
 
@@ -158,75 +292,6 @@ async fn main() -> Result<(), ()> {
         }
     };
 
-    let mut db = Database::new();
-
-    let platform: Platform = utils::load_or_create_platform(&mut db);
-
-    println!("Platform: {:?}", platform);
-
-    let db_ref = Arc::new(Mutex::new(db));
-
-    let static_site_download_proc;
-    {
-        let arc = db_ref.clone();
-
-        static_site_download_proc = tokio::spawn(async move {
-            let git_data =
-                gitapi::GitApi::get_tail_commits_for_repo_branches("ethanshry", "kraken-ui");
-
-            let mut sha = String::from("");
-
-            let should_update_ui = match git_data {
-                Some(data) => {
-                    let mut flag = true;
-                    for branch in data {
-                        if branch.name == "build" {
-                            let db = arc.lock().unwrap();
-                            let active_branch = db.get_orchestrator().ui.cloned_commit;
-                            // unlock db
-                            drop(db);
-                            match active_branch {
-                                Some(b) => {
-                                    if branch.commit.sha == b {
-                                        flag = false;
-                                        sha = b.clone();
-                                    } else {
-                                        sha = branch.commit.sha;
-                                    }
-                                }
-                                None => {
-                                    sha = branch.commit.sha.clone();
-                                }
-                            }
-                            break;
-                        }
-                    }
-                    flag
-                }
-                None => true,
-            };
-
-            if sha == "" {
-                println!("No build branch found, cannot update kraken-ui");
-                return;
-            }
-
-            if should_update_ui {
-                println!("Cloning updated UI...");
-                clone_remote_branch(
-                    "https://github.com/ethanshry/Kraken-UI.git",
-                    "build",
-                    "tmp/site",
-                )
-                .wait()
-                .unwrap();
-                copy_dir_contents_to_static("tmp/site/build");
-                fs::remove_dir_all("tmp/site").unwrap();
-            }
-
-            println!("Kraken-UI is now available at commit SHA: {}", sha);
-        });
-    }
     // Thread to post sysinfo every 5 seconds
     let system_status_proc;
     {
@@ -261,88 +326,6 @@ async fn main() -> Result<(), ()> {
                     system.get_load_average().five as f32,
                 );
                 msg.send(&publisher, QueueLabel::Sysinfo.as_str()).await;
-            }
-        });
-    }
-
-    let sysinfo_consumer = {
-        let arc = db_ref.clone();
-
-        let system_uuid = system_uuid.clone();
-
-        let handler = move |data: Vec<u8>| {
-            let (node, message) = SysinfoMessage::deconstruct_message(&data);
-            info!("Recieved Message on the Sysinfo channel");
-
-            // TODO clean up all this unsafe unwrapping
-            let mut db = arc.lock().unwrap();
-            if let Some(n) = db.get_node(&node) {
-                let mut new_node = n.clone();
-                new_node.set_id(&node);
-                new_node.update(
-                    message.ram_free,
-                    message.ram_used,
-                    message.uptime,
-                    message.load_avg_5,
-                );
-                db.insert_node(&new_node);
-            } else {
-                let new_node = model::Node::from_incomplete(
-                    &node,
-                    None,
-                    Some(message.ram_free),
-                    Some(message.ram_used),
-                    Some(message.uptime),
-                    Some(message.load_avg_5),
-                    None,
-                    None,
-                );
-                db.insert_node(&new_node);
-            }
-            return ();
-        };
-
-        tokio::spawn(async move {
-            broker
-                .consume_queue(&system_uuid, QueueLabel::Sysinfo.as_str(), &handler)
-                .await;
-        })
-    };
-
-    /*
-    // Thread to consume deployment queue
-    let deployment_consumer;
-    {
-        let arc = db_ref.clone();
-
-        let system_uuid = system_uuid.clone();
-
-        let consumer_channel = broker.get_channel().await;
-
-        rabbit_consumer_proc = tokio::spawn(async move {
-            let mut consumer = RabbitBroker::get_consumer(
-                &consumer_channel,
-                QueueLabel::Deployment.as_str(),
-                &addr,
-            )
-            .await;
-
-            while let Some(delivery) = consumer.next().await {
-                let (channel, delivery) = delivery.expect("error in consumer");
-                RabbitBroker::ack(&channel, delivery.delivery_tag).await;
-
-                let (node, message) = DeploymentMessage::deconstruct_message(&delivery.data);
-                println!("Recieved Message on the Deployment channel");
-
-                println!(
-                    "{} : Deployment {}\n\t{} : {}",
-                    node,
-                    message.deployment_id,
-                    message.deployment_status,
-                    message.deployment_status_description
-                );
-
-                consumer.ack(delivery).expect("noack");
             }
         });
     }
@@ -512,24 +495,8 @@ async fn main() -> Result<(), ()> {
         */
         //res.try_collect().await;
     });
-    */
-    // launch the API server
-    rocket::ignite()
-        .manage(ManagedDatabase::new(db_ref.clone()))
-        .manage(routes::Schema::new(Query, EmptyMutation::<Database>::new()))
-        .mount(
-            "/",
-            rocket::routes![
-                routes::root,
-                routes::graphiql,
-                routes::get_graphql_handler,
-                routes::post_graphql_handler,
-                routes::site
-            ],
-        )
-        .launch();
-    static_site_download_proc.await;
+
+    // let uri = "https://github.com/ethanshry/scapegoat.git";
     system_status_proc.await;
-    //rabbit_consumer_proc.await;
     Ok(())
 }
