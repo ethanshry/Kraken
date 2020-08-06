@@ -16,6 +16,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::fs::File;
 use std::io::Read;
+use std::process::Command;
 use uuid::Uuid;
 
 pub mod docker_container;
@@ -213,6 +214,41 @@ impl DockerBroker {
         }
     }
 
+    /// Builds a docker image from a local project folder
+    ///
+    /// This will create a `/tmp/containers` directory if it doesn't exist to store a tar of the project before building the image.
+    /// # Arguments
+    ///
+    /// * `source_path` - The path relative to the root of the crate which contains the desired image contents. A `Dockerfile` is expected to be in this folder.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let docker = DockerBroker::new();
+    /// docker.build_image("./tmp/test-proj"); // builds image 12345 and maps 9000->9000
+    /// ```
+    pub async fn create_(
+        &self,
+        image_name: &str,
+    ) -> Result<DockerImageBuildResult, String> {
+        let container_guid = Uuid::new_v4().to_hyphenated().to_string();
+        // tar the directory
+        let res = Command::new("docker")
+            .arg("run")
+            .arg("-d")
+            .arg("-t")
+            .arg(&container_guid)
+            .output()
+            .expect("error in docker build");
+
+        Ok(DockerImageBuildResult {
+            log: vec![String::from("")],
+            image_id: container_guid.clone(),
+        })
+
+        //docker run -d --hostname my-rabbit --name rab -p 5672:5672 rabbitmq:3
+    }
+
     /// Both creates and starts a docker container
     ///
     /// # Arguments
@@ -297,7 +333,7 @@ impl DockerBroker {
     }
 
     // TODO figure out what stats are actually useful
-    pub async fn get_container_stats(&self, container_id: &str) -> () {}
+    pub async fn get_container_stats(&self, _container_id: &str) -> () {}
 
     /// Remove unused images from docker
     ///

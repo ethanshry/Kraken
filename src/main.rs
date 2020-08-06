@@ -26,19 +26,20 @@ extern crate strum_macros;
 
 use db::{Database, ManagedDatabase};
 use dotenv;
-use file_utils::{clear_tmp, copy_dir_contents_to_static, copy_dockerfile_to_dir};
+use file_utils::{clear_tmp, copy_dir_contents_to_static};
 use futures_util::stream::StreamExt;
 use git_utils::clone_remote_branch;
 use juniper::EmptyMutation;
 use log::info;
-use model::{ApplicationStatus, Platform, Service, ServiceStatus};
-use rabbit::{sysinfo_message::SysinfoMessage, QueueLabel, RabbitBroker, RabbitMessage};
+use model::{Platform, Service, ServiceStatus};
+use rabbit::{
+    deployment_message::DeploymentMessage, sysinfo_message::SysinfoMessage, QueueLabel,
+    RabbitBroker, RabbitMessage,
+};
 use schema::Query;
 use std::fs;
-use std::process::Command;
 use std::sync::{Arc, Mutex};
 use sysinfo::SystemExt;
-use uuid::Uuid;
 
 /// Kraken is a LAN-based deployment platform. It is designed to be highly flexible and easy to use.
 /// TODO actually write this documentation
@@ -84,7 +85,7 @@ async fn main() -> Result<(), ()> {
     // get uuid for system, or create one
     let system_uuid = utils::get_system_id();
     // TODO How should I handle this type of thing?
-    std::env::set_var("SYSID", system_uuid);
+    std::env::set_var("SYSID", &system_uuid);
 
     // determine if should be an orchestrator or a worker
     let mode = get_node_mode();
@@ -127,6 +128,20 @@ async fn main() -> Result<(), ()> {
             println!("Platform: {:?}", platform);
 
             let db_ref = Arc::new(Mutex::new(db));
+
+            let arc = db_ref.clone();
+
+            // closure for auto unlock
+            || -> () {
+                let mut db = arc.lock().unwrap();
+                db.add_platform_service(Service::new(
+                    "rabbitmq",
+                    "0.1.0",
+                    &addr,
+                    ServiceStatus::OK,
+                ))
+                .unwrap();
+            }();
 
             // download site
             let static_site_download_proc;
@@ -201,6 +216,7 @@ async fn main() -> Result<(), ()> {
             let sysinfo_consumer = {
                 let arc = db_ref.clone();
                 let system_uuid = system_uuid.clone();
+                let addr = addr.clone();
                 let handler = move |data: Vec<u8>| {
                     let (node, message) = SysinfoMessage::deconstruct_message(&data);
                     info!("Recieved Message on the Sysinfo channel");
@@ -232,6 +248,10 @@ async fn main() -> Result<(), ()> {
                     return ();
                 };
                 tokio::spawn(async move {
+                    let broker = match RabbitBroker::new(&addr).await {
+                        Some(b) => b,
+                        None => panic!("Could not establish rabbit connection"),
+                    };
                     broker
                         .consume_queue(&system_uuid, QueueLabel::Sysinfo.as_str(), &handler)
                         .await;
@@ -243,7 +263,7 @@ async fn main() -> Result<(), ()> {
                 let arc = db_ref.clone();
 
                 let system_uuid = system_uuid.clone();
-
+                let addr = addr.clone();
                 let handler = move |data: Vec<u8>| {
                     let (node, message) = SysinfoMessage::deconstruct_message(&data);
                     let (node, message) = DeploymentMessage::deconstruct_message(&data);
@@ -256,10 +276,17 @@ async fn main() -> Result<(), ()> {
                         message.deployment_status,
                         message.deployment_status_description
                     );
+
+                    // TODO add info to the db
+
                     return ();
                 };
 
                 tokio::spawn(async move {
+                    let broker = match RabbitBroker::new(&addr).await {
+                        Some(b) => b,
+                        None => panic!("Could not establish rabbit connection"),
+                    };
                     broker
                         .consume_queue(&system_uuid, QueueLabel::Sysinfo.as_str(), &handler)
                         .await;
@@ -293,28 +320,12 @@ async fn main() -> Result<(), ()> {
     };
 
     // Thread to post sysinfo every 5 seconds
-    let system_status_proc;
-    {
-        let arc = db_ref.clone();
-        let producer = broker.get_channel().await;
+    let system_status_proc = {
         let system_uuid = system_uuid.clone();
-        let addr = addr.clone();
 
         let publisher = broker.get_channel().await;
 
-        system_status_proc = tokio::spawn(async move {
-            // closure for auto unlock
-            || -> () {
-                let mut db = arc.lock().unwrap();
-                db.add_platform_service(Service::new(
-                    "rabbitmq",
-                    "0.1.0",
-                    &addr,
-                    ServiceStatus::OK,
-                ))
-                .unwrap();
-            }();
-
+        tokio::spawn(async move {
             let mut msg = SysinfoMessage::new(&system_uuid);
             loop {
                 std::thread::sleep(std::time::Duration::new(5, 0));
@@ -327,176 +338,11 @@ async fn main() -> Result<(), ()> {
                 );
                 msg.send(&publisher, QueueLabel::Sysinfo.as_str()).await;
             }
-        });
-    }
-
-    // deploy image
-
-    let res = std::thread::spawn(move || {
-        let container_guid = Uuid::new_v4().to_hyphenated().to_string();
-        let uri = "https://github.com/ethanshry/scapegoat.git";
-
-        let broker;
-
-        match RabbitBroker::new("amqp://localhost:5672") {
-            Some(b) => broker = b,
-            None => {
-                // TODO spin up service and try again
-                broker = RabbitBroker::new("amqp://localhost:5672").unwrap()
-            }
-        }
-
-        let publisher = broker.get_publisher();
-
-        let mut msg = DeploymentMessage::new(&container_guid);
-
-        publisher
-            .publish(Publish::new(&msg.build_message(&system_uuid), "deployment"))
-            .unwrap();
-
-        // TODO make function to execute a thing in a tmp dir which auto-cleans itself
-        let tmp_dir_path = "tmp/process";
-
-        println!("Creating Container {}", &container_guid);
-
-        msg.update_message(
-            ApplicationStatus::RETRIEVING,
-            &format!("Retrieving Application Data from {}", uri),
-        );
-
-        publisher
-            .publish(Publish::new(&msg.build_message(&system_uuid), "deployment"))
-            .unwrap();
-
-        println!("Cloning docker process...");
-        clone_remote_branch(uri, "master", tmp_dir_path)
-            .wait()
-            .unwrap();
-
-        // Inject the proper dockerfile into the project
-        // TODO read this from the project's toml file
-        copy_dockerfile_to_dir("python36.dockerfile", tmp_dir_path);
-
-        /*
-        // tar the github repo
-        let mut ball =
-            TarBuilder::new(fs::File::create(format!("tmp/tar/{}.tar", &container_guid)).unwrap());
-        //let mut ball = TarBuilder::new(Vec::new());
-
-        ball.append_dir_all(tmp_dir_path, ".").unwrap();
-
-        ball.finish();
-
-        let options = BuildImageOptions {
-            t: container_guid.clone(),
-            rm: true,
-            ..Default::default()
-        };
-
-        */
-
-        println!("module path is {}", module_path!());
-
-        msg.update_message(ApplicationStatus::BUILDING, "");
-
-        publisher
-            .publish(Publish::new(&msg.build_message(&system_uuid), "deployment"))
-            .unwrap();
-
-        let res = Command::new("docker")
-            .current_dir("tmp/process")
-            .arg("build")
-            .arg(".")
-            .arg("-t")
-            .arg(&container_guid)
-            .output()
-            .expect("error in docker build");
-
-        println!("docker build status: {}", res.status);
-
-        // TODO write all build info to build log
-
-        if res.stderr.len() != 0 {
-            println!("Error in build");
-            msg.update_message(ApplicationStatus::ERRORED, "Error in build process");
-
-            publisher
-                .publish(Publish::new(&msg.build_message(&system_uuid), "deployment"))
-                .unwrap();
-        } else {
-            msg.update_message(ApplicationStatus::DEPLOYING, "");
-
-            publisher
-                .publish(Publish::new(&msg.build_message(&system_uuid), "deployment"))
-                .unwrap();
-
-            let res = Command::new("docker")
-                .arg("run")
-                .arg("-i")
-                .arg("-p")
-                .arg("9000:9000")
-                .arg("--name")
-                .arg(&container_guid)
-                .arg("-d")
-                .arg("-t")
-                .arg(&container_guid)
-                .output()
-                .expect("error in docker run");
-
-            // TODO write all deploy info to deploy log
-
-            println!("docker run status: {}", res.status);
-
-            if res.stderr.len() != 0 {
-                println!("Error in deploy");
-                msg.update_message(ApplicationStatus::ERRORED, "Error in deployment");
-
-                publisher
-                    .publish(Publish::new(&msg.build_message(&system_uuid), "deployment"))
-                    .unwrap();
-            } else {
-                println!(
-                    "Docker container id: {}",
-                    &String::from_utf8_lossy(&res.stdout)
-                );
-
-                msg.update_message(ApplicationStatus::DEPLOYED, "");
-
-                publisher
-                    .publish(Publish::new(&msg.build_message(&system_uuid), "deployment"))
-                    .unwrap();
-
-                println!(
-                    "Application instance {} deployed succesfully",
-                    &container_guid
-                );
-            }
-        }
-
-        // write stderr to stdout
-        //io::stderr().write_all(&res.stdout).unwrap();
-
-        //let mut ball = fs::File::open(format!("/tmp/tar/{}", &container_guid)).unwrap();
-
-        //let mut contents = Vec::new();
-        //ball.read_to_end(&mut contents).unwrap();
-
-        //let res = docker.build_image(options, None, Some(contents.into()));
-        /*.map(|v| {
-            println!("{:?}", v);
-            v
         })
-        .map_err(|e| {
-            println!("{:?}", e);
-            e
-        })
-        .collect::<Vec<Result<BuildImageResults, bollard::errors::Error>>>()
-        .await;
-        */
-        //res.try_collect().await;
-    });
+    };
+
+    system_status_proc.await;
 
     // let uri = "https://github.com/ethanshry/scapegoat.git";
-    system_status_proc.await;
     Ok(())
 }

@@ -10,14 +10,27 @@ pub struct RabbitBroker {
     pub conn: lapin::Connection,
 }
 
+/// Label Definitions to be used to specify queues for rabbit messages.
 pub enum QueueLabel {
     Sysinfo,
     Deployment,
 }
 
 impl QueueLabel {
-    // cool pattern from https://users.rust-lang.org/t/noob-enum-string-with-symbols-resolved/7668/2
+    /// Declares a queue within the rabbit instance for messages within the rabbit instance for messages to be posted to
+    /// The typical pattern is to use a `QueueLabel` value as the queue name.
+    ///
+    /// # Arguments
+    ///
+    /// * `queue_label` - The string which will differentiate the queue messages will go to. Should be unique across the rabbit instance.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let label = QueueLabel::Sysinfo.as_str();
+    /// ```
     pub fn as_str(&self) -> &'static str {
+        // cool pattern from https://users.rust-lang.org/t/noob-enum-string-with-symbols-resolved/7668/2
         match *self {
             QueueLabel::Sysinfo => "sysinfo",
             QueueLabel::Deployment => "deployment",
@@ -39,7 +52,22 @@ impl RabbitBroker {
         }
     }
 
-    /// Declares a queue to which rabbitmq messages can be published
+    /// Declares a queue within the rabbit instance for messages within the rabbit instance for messages to be posted to
+    /// The typical pattern is to use a `QueueLabel` value as the queue name.
+    ///
+    /// # Arguments
+    ///
+    /// * `queue_label` - The string which will differentiate the queue messages will go to. Should be unique across the rabbit instance.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let broker = match RabbitBroker::new(&addr).await {
+    /// Some(b) => b,
+    /// None => panic!("Could not establish rabbit connection"),
+    /// };
+    /// broker.declare_queue(QueueLabel::Sysinfo.as_str()).await;
+    /// ```
     pub async fn declare_queue(&self, queue_label: &str) -> bool {
         // Channels are cheap, and de-allocate when out of scope
         let chan = &self
@@ -60,43 +88,23 @@ impl RabbitBroker {
         }
     }
 
-    /// Gets a new publisher for the existing broker channel. This should happen on the thread it is operating on
+    /// Gets a new publisher for the existing broker channel. This should not be shared between threads.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let broker = match RabbitBroker::new(&addr).await {
+    /// Some(b) => b,
+    /// None => panic!("Could not establish rabbit connection"),
+    /// };
+    /// broker.get_channel().await;
+    /// ```
     pub async fn get_channel(&self) -> lapin::Channel {
         self.conn
             .create_channel()
             .await
             .expect("Could not create rabbit channel via connection")
     }
-
-    /*
-    /// Gets a consumer of a queue
-    pub async fn get_consumer(
-        &self,
-        queue_label: &str,
-        consumer_tag: &str,
-    ) -> (lapin::Channel, lapin::Consumer) {
-        let chan: lapin::Channel = self
-            .conn
-            .create_channel()
-            .await
-            .expect("cannot build channel");
-        chan.confirm_select(ConfirmSelectOptions::default())
-            .await
-            .expect("Cannot confirm options");
-
-        (
-            chan,
-            chan.basic_consume(
-                queue_label,
-                consumer_tag,
-                BasicConsumeOptions::default(),
-                FieldTable::default(),
-            )
-            .await
-            .expect("cannot create consumer"),
-        )
-    }
-    */
 
     /// Converts a queue into a consumer
     pub async fn get_consumer(
@@ -119,7 +127,8 @@ impl RabbitBroker {
             .expect("cannot create consumer")
     }
 
-    pub async fn ack(channel: &lapin::Channel, tag: u64) -> () {
+    /// Send an ack to a message
+    async fn ack(channel: &lapin::Channel, tag: u64) -> () {
         channel
             .basic_ack(tag, BasicAckOptions::default())
             .await
@@ -127,6 +136,30 @@ impl RabbitBroker {
     }
 
     // TODO dive into dyn
+    /// Consumes a queue data stream and calls handler on each incoming message
+    ///
+    /// # Arguments
+    ///
+    /// * `consumer_tag` - Label for the consumer of the queue
+    /// * `queue_label` - Label for the queue to consume, typically a QueueLabel::<T>.to_str()
+    /// * `handler` - A function to call on incoming messages
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let broker = match RabbitBroker::new(&addr).await {
+    /// Some(b) => b,
+    /// None => panic!("Could not establish rabbit connection"),
+    /// };
+    ///
+    /// let handler = |data: Vec<u8>| {
+    ///     info!("{}", data);
+    /// };
+    ///
+    /// let consumer = tokio::spawn(async move {
+    ///     broker.consume_queue('1234', QueueLabel::Sysinfo.as_str(), handler).await
+    /// });
+    /// ```
     pub async fn consume_queue<F>(&self, consumer_tag: &str, queue_label: &str, handler: F)
     where
         F: Fn(Vec<u8>) -> (),
@@ -146,8 +179,12 @@ impl RabbitBroker {
 /// Trait to pack system identifier and data into a vector to be sent by rabbit,
 /// and unpack a Vec<u8> to a string for easy processing
 pub trait RabbitMessage<T> {
+    /// For internal use by the RabbitMessage::send function
     fn build_message(&self) -> Vec<u8>;
+    // TODO write unit tests to enforce the send <-> deconstruct relationship
+    /// Takes a packet from T::send and turns it back into a T
     fn deconstruct_message(packet_data: &Vec<u8>) -> (String, T);
+    /// Wrapper around lapin::Channel::basic_publish
     async fn send(&self, channel: &lapin::Channel, tag: &str) -> bool
     where
         T: 'async_trait,

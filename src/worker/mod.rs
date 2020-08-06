@@ -1,23 +1,11 @@
-use crate::db::{Database, ManagedDatabase};
 use crate::docker::DockerBroker;
-use crate::file_utils::{clear_tmp, copy_dir_contents_to_static, copy_dockerfile_to_dir};
+use crate::file_utils::copy_dockerfile_to_dir;
 use crate::git_utils::clone_remote_branch;
 use crate::model::ApplicationStatus;
 use crate::rabbit::{
     deployment_message::DeploymentMessage, QueueLabel, RabbitBroker, RabbitMessage,
 };
-use crate::schema::Query;
-use dotenv;
-use futures_util::stream::StreamExt;
-use juniper::EmptyMutation;
 use log::{error, info};
-use std::fs;
-use std::io::prelude::*;
-use std::io::{self, Write};
-use std::process::Command;
-use std::sync::{Arc, Mutex};
-use strum_macros::{Display, EnumIter};
-use sysinfo::SystemExt;
 use uuid::Uuid;
 
 pub async fn handle_deployment(
@@ -53,9 +41,9 @@ pub async fn handle_deployment(
     // Inject the proper dockerfile into the project
     // TODO read configuration information from toml file
 
-    let dockerfile_name = "python26.dockerfile";
+    let dockerfile_name = "python36.dockerfile";
 
-    copy_dockerfile_to_dir("python36.dockerfile", tmp_dir_path);
+    copy_dockerfile_to_dir(dockerfile_name, tmp_dir_path);
 
     println!("module path is {}", module_path!());
 
