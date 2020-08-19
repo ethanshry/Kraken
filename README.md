@@ -18,3 +18,14 @@ When docker is initiall installed on linux, it can only be managed as root. To w
 sudo groupadd docker
 sudo usermod -aG docker $USER
 ```
+
+## .env
+
+This project expects an environment file of the following format
+
+```bash
+
+RUST_LOG=[debug|info|error]
+NODE_MODe=[WORKER|ORCHESTRATOR]
+
+```
