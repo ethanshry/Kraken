@@ -1,5 +1,8 @@
 .PHONY: documentation build-rabbit run-rabbit
 
+install:
+	echo "TODO: Implement Installation Script"
+
 documentation:
 	cargo doc
 

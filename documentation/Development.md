@@ -5,6 +5,7 @@ There are several tools you need to effectively develop this project.
 - Make
 - Rust (nightly)
 - Docker
+- Docker Compose
 
 ## Docker configuration
 
