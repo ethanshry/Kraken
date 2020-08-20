@@ -31,7 +31,7 @@ author="[AUTHOR]"
 endpoint="[REPO URL]"
 
 [config]
-lang="[python36|undefined]" # The application lang indicates the base dockerfile 
+lang="[python36|undefined]" # The application lang indicates the base dockerfile
 test="" # command to run tests, leave blank for no tests. Only passing tests will run application
 run="python3 ./src/main.py" # command to run the application
 
@@ -61,3 +61,14 @@ Kraken exists to fill this need- with a minimal amount of setup, any existing ha
 Additionally, Kraken is my playgroud for learning about the Rust ecosystem, and developing strategies for handling distributed systems.
 
 See [/documentation/ProjectArchitecture.md](./documentation/ProjectArchitecture.md) for information about how the platform works.
+
+## .env
+
+This project expects an environment file of the following format
+
+```bash
+
+RUST_LOG=[debug|info|error]
+NODE_MODe=[WORKER|ORCHESTRATOR]
+
+```
