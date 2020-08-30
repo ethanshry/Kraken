@@ -1,9 +1,10 @@
-#![feature(proc_macro_hygiene, decl_macro)]
+#![feature(proc_macro_hygiene, decl_macro, async_closure)]
 
 //#[macro_use]
 //extern crate rocket;
 //extern crate juniper; // = import external crate? why do I not need rocket, etc?
 mod docker;
+mod platform_executor;
 mod rabbit;
 
 mod db; // looks for a file named "db.rs" and implicitly wraps it in a mod db {}
@@ -33,6 +34,7 @@ use git_utils::clone_remote_branch;
 use juniper::EmptyMutation;
 use log::info;
 use model::{Platform, Service, ServiceStatus};
+use platform_executor::{Tester, TesterTrait};
 use rabbit::{
     deployment_message::DeploymentMessage, sysinfo_message::SysinfoMessage, QueueLabel,
     RabbitBroker, RabbitMessage,
@@ -73,6 +75,33 @@ fn get_node_mode() -> NodeMode {
 
 #[tokio::main]
 async fn main() -> Result<(), ()> {
+    let mut tstr = Tester::new();
+
+    async fn a() -> () {
+        //std::thread::sleep(std::time::Duration::new(1, 0));
+        info!("Test fn A");
+    }
+
+    async fn b() -> () {
+        //std::thread::sleep(std::time::Duration::new(5, 0));
+        info!("Test fn B");
+    }
+
+    //let c = async || {
+    //std::thread::sleep(std::time::Duration::new(1, 0));
+    //info!("Test fn C");
+    //}
+
+    let c = async || info!("Test fn C");
+
+    let d = async || info!("Test fn D");
+
+    //tstr.add_setup_task(&a);
+    tstr.add_setup_task(&c);
+    tstr.add_setup_task(&d);
+
+    Ok(())
+    /*
     dotenv::dotenv().ok();
     env_logger::init();
     let addr: String =
@@ -357,4 +386,5 @@ async fn main() -> Result<(), ()> {
 
     // let uri = "https://github.com/ethanshry/scapegoat.git";
     Ok(())
+    */
 }
