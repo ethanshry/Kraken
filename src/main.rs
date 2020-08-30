@@ -29,7 +29,6 @@ extern crate strum_macros;
 use db::{Database, ManagedDatabase};
 use dotenv;
 use file_utils::{clear_tmp, copy_dir_contents_to_static};
-use futures_util::stream::StreamExt;
 use git_utils::clone_remote_branch;
 use juniper::EmptyMutation;
 use log::info;
@@ -38,8 +37,6 @@ use rabbit::{
     deployment_message::DeploymentMessage, sysinfo_message::SysinfoMessage, QueueLabel,
     RabbitBroker, RabbitMessage,
 };
-use rocket::http::Method; // 1.
-use rocket_cors::{AllowedHeaders, AllowedOrigins};
 use schema::Query;
 use std::fs;
 use std::sync::{Arc, Mutex};
@@ -303,10 +300,6 @@ async fn main() -> Result<(), ()> {
 
             // You can also deserialize this
             let options = rocket_cors::CorsOptions {
-                //allowed_origins: AllowedOrigins::all(),
-                //allowed_methods: vec![Method::Get].into_iter().map(From::from).collect(),
-                //allowed_headers: AllowedHeaders::some(&["Authorization", "Accept"]),
-                //allow_credentials: true,
                 ..Default::default()
             }
             .to_cors()

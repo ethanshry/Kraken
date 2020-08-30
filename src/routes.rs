@@ -41,7 +41,6 @@ pub fn post_graphql_handler(
     schema: State<Schema>,
 ) -> juniper_rocket::GraphQLResponse {
     let ctx = context.db.lock().unwrap();
-    println!("{:?}", request);
     request.execute(&schema, &ctx)
 }
 
