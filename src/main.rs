@@ -34,7 +34,7 @@ use git_utils::clone_remote_branch;
 use juniper::EmptyMutation;
 use log::info;
 use model::{Platform, Service, ServiceStatus};
-use platform_executor::{Tester, TesterTrait};
+use platform_executor::{Tester2, TesterTrait2};
 use rabbit::{
     deployment_message::DeploymentMessage, sysinfo_message::SysinfoMessage, QueueLabel,
     RabbitBroker, RabbitMessage,
@@ -75,7 +75,7 @@ fn get_node_mode() -> NodeMode {
 
 #[tokio::main]
 async fn main() -> Result<(), ()> {
-    let mut tstr = Tester::new();
+    let mut tstr = Tester2::new();
 
     async fn a() -> () {
         //std::thread::sleep(std::time::Duration::new(1, 0));
@@ -92,13 +92,18 @@ async fn main() -> Result<(), ()> {
     //info!("Test fn C");
     //}
 
-    let c = async || info!("Test fn C");
+    let c = || {
+        std::thread::sleep(std::time::Duration::new(1, 0));
+        println!("Test fn C");
+    };
 
-    let d = async || info!("Test fn D");
+    let d = || println!("Test fn D");
 
     //tstr.add_setup_task(&a);
-    tstr.add_setup_task(&c);
-    tstr.add_setup_task(&d);
+    tstr.add_setup_task(c);
+    tstr.add_setup_task(d);
+
+    tstr.setup().await;
 
     Ok(())
     /*
