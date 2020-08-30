@@ -18,7 +18,7 @@ pub struct GitApi {}
 
 impl GitApi {
     /// Grabs the most recent commits for all branches in a given repo
-    pub fn get_tail_commits_for_repo_branches(user: &str, repo: &str) -> Option<Vec<Branch>> {
+    pub async fn get_tail_commits_for_repo_branches(user: &str, repo: &str) -> Option<Vec<Branch>> {
         let url = format!(
             "https://api.github.com/repos/{owner}/{repo}/branches",
             owner = user,
@@ -27,16 +27,17 @@ impl GitApi {
 
         println!("Making request to: {}", url);
 
-        let client = reqwest::blocking::Client::new();
+        let client = reqwest::Client::new();
 
         let response = client
             .get(&url)
             .header(CONTENT_TYPE, "application/json")
             .header(USER_AGENT, "Kraken")
-            .send();
+            .send()
+            .await;
 
         match response {
-            Ok(r) => match r.json() {
+            Ok(r) => match r.json().await {
                 Ok(data) => data,
                 Err(e) => {
                     println!("Failed to parse JSON: {}", e);

@@ -18,9 +18,10 @@ futures = "0.3.4"
 juniper = "0.14"
 juniper_rocket = "0.5"
 lapin="1.2"
-log = "0.4.0"
+log = "0.4"
 reqwest = { version = "0.10", features = ["blocking", "json"] }
 rocket = { version = "0.4", default-features = false }
+rocket_cors = "0.5"
 rusqlite="0.23"
 serde = "1.0"
 serde_json = "1.0"
@@ -30,7 +31,7 @@ sysinfo = "0.14"
 tar = "0.4"
 tokio-amqp = "0.1.3"
 tokio = { version= "0.2", features=["rt-threaded", "macros"]}
-toml = "0.4"
+toml = "0.5"
 uuid = { version = "0.8", features = ["serde", "v4"] }
 
 # TODO look into warp over rocket

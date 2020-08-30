@@ -22,12 +22,13 @@ extern crate strum;
 
 #[macro_use]
 extern crate juniper;
+extern crate rocket;
+extern crate rocket_cors;
 extern crate strum_macros;
 
 use db::{Database, ManagedDatabase};
 use dotenv;
 use file_utils::{clear_tmp, copy_dir_contents_to_static};
-use futures_util::stream::StreamExt;
 use git_utils::clone_remote_branch;
 use juniper::EmptyMutation;
 use log::info;
@@ -89,6 +90,8 @@ async fn main() -> Result<(), ()> {
 
     // determine if should be an orchestrator or a worker
     let mode = get_node_mode();
+
+    info!("Node {} initialized in {:?} mode", system_uuid, mode);
 
     let broker: RabbitBroker = match mode {
         // Connect directly to rabbit
@@ -152,7 +155,8 @@ async fn main() -> Result<(), ()> {
                     let git_data = gitapi::GitApi::get_tail_commits_for_repo_branches(
                         "ethanshry",
                         "kraken-ui",
-                    );
+                    )
+                    .await;
 
                     let mut sha = String::from("");
 
@@ -294,6 +298,13 @@ async fn main() -> Result<(), ()> {
             };
             // work sender queue
 
+            // You can also deserialize this
+            let options = rocket_cors::CorsOptions {
+                ..Default::default()
+            }
+            .to_cors()
+            .unwrap();
+
             // launch rocket
             let server = tokio::spawn(async move {
                 static_site_download_proc.await;
@@ -310,6 +321,7 @@ async fn main() -> Result<(), ()> {
                             routes::site
                         ],
                     )
+                    .attach(options)
                     .launch();
             });
 
