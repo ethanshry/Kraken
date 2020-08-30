@@ -303,10 +303,10 @@ async fn main() -> Result<(), ()> {
 
             // You can also deserialize this
             let options = rocket_cors::CorsOptions {
-                allowed_origins: AllowedOrigins::all(),
-                allowed_methods: vec![Method::Get].into_iter().map(From::from).collect(),
-                allowed_headers: AllowedHeaders::some(&["Authorization", "Accept"]),
-                allow_credentials: true,
+                //allowed_origins: AllowedOrigins::all(),
+                //allowed_methods: vec![Method::Get].into_iter().map(From::from).collect(),
+                //allowed_headers: AllowedHeaders::some(&["Authorization", "Accept"]),
+                //allow_credentials: true,
                 ..Default::default()
             }
             .to_cors()
