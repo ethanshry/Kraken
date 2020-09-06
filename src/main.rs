@@ -30,17 +30,19 @@ extern crate strum_macros;
 use db::{Database, ManagedDatabase};
 use dotenv;
 use file_utils::{clear_tmp, copy_dir_contents_to_static};
+use futures::Future;
 use git_utils::clone_remote_branch;
 use juniper::EmptyMutation;
 use log::info;
 use model::{Platform, Service, ServiceStatus};
-use platform_executor::{Tester2, TesterTrait2};
+use platform_executor::{Tester2, Tester3, TesterTrait2, TesterTrait3};
 use rabbit::{
     deployment_message::DeploymentMessage, sysinfo_message::SysinfoMessage, QueueLabel,
     RabbitBroker, RabbitMessage,
 };
 use schema::Query;
 use std::fs;
+use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 use sysinfo::SystemExt;
 
@@ -75,6 +77,9 @@ fn get_node_mode() -> NodeMode {
 
 #[tokio::main]
 async fn main() -> Result<(), ()> {
+    let addr: String =
+        std::env::var("AMQP_ADDR").unwrap_or_else(|_| "amqp://127.0.0.1:5672".into());
+
     let mut tstr = Tester2::new();
 
     async fn a() -> () {
@@ -104,6 +109,33 @@ async fn main() -> Result<(), ()> {
     tstr.add_setup_task(d);
 
     tstr.setup().await;
+
+    let mut tstr3 = Tester3::new();
+
+    let e = async move || {
+        std::thread::sleep(std::time::Duration::new(1, 0));
+        info!("Test fn E");
+        ()
+    };
+
+    let f: Fn() -> Box<dyn Future<Output = ()>> = || async move {
+        //std::thread::sleep(std::time::Duration::new(5, 0));
+        info!("Test fn F");
+        let broker = match RabbitBroker::new(&(addr.clone())).await {
+            Some(b) => b,
+            None => panic!("Could not establish rabbit connection"),
+        };
+
+        // deploy queues
+
+        broker.declare_queue(QueueLabel::Sysinfo.as_str()).await;
+        Box::pin(())
+    };
+
+    //tstr3.add_setup_task(e);
+    tstr3.add_setup_task(f);
+
+    tstr3.setup().await;
 
     Ok(())
     /*

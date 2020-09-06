@@ -2,6 +2,7 @@ pub mod orchestrator;
 
 use async_trait::async_trait;
 use futures::Future;
+use std::pin::Pin;
 
 pub enum SetupFaliure {
     NoPlatform, // Could not connect to existing platform
@@ -107,6 +108,52 @@ impl TesterTrait2 for Tester2 {
         for task in self.setup_tasks.iter() {
             println!("EXECUTING");
             task();
+            ()
+        }
+        Ok(())
+    }
+}
+
+#[async_trait]
+pub trait TesterTrait3 {
+    fn add_setup_task<F>(
+        &mut self,
+        //task: Box<dyn Send + Sync + Fn() -> dyn Future<Output = Result<(), SetupFaliure>>>,
+        //task: &'a (dyn Send + Sync + Fn() -> dyn Future<Output = ()>),
+        task: F,
+    ) -> ()
+    where
+        F: Unpin + Sync + Send + Fn() -> Pin<Box<dyn Send + Future<Output = ()>>> + 'static;
+    async fn setup(&self) -> Result<(), SetupFaliure>;
+}
+
+pub struct Tester3 {
+    setup_tasks:
+        Vec<Box<dyn Unpin + Sync + Send + Fn() -> Pin<Box<dyn Send + Future<Output = ()>>>>>,
+}
+
+impl Tester3 {
+    /// Creates a new Orchestrator Object
+    pub fn new() -> Tester2 {
+        Tester2 {
+            setup_tasks: vec![],
+        }
+    }
+}
+
+#[async_trait]
+impl TesterTrait3 for Tester3 {
+    fn add_setup_task<F>(&mut self, task: F) -> ()
+    where
+        F: Unpin + Sync + Send + Fn() -> Pin<Box<dyn Send + Future<Output = ()>>> + 'static,
+    {
+        self.setup_tasks.push(Box::new(task))
+    }
+    async fn setup(&self) -> Result<(), SetupFaliure> {
+        for task in self.setup_tasks.iter() {
+            let t = task.clone();
+            println!("EXECUTING");
+            task().await;
             ()
         }
         Ok(())
