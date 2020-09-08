@@ -2,7 +2,9 @@ use crate::db::{Database, ManagedDatabase};
 use crate::file_utils::{clear_tmp, copy_dir_contents_to_static};
 use crate::git_utils::clone_remote_branch;
 use crate::model::{Platform, Service, ServiceStatus};
-use crate::platform_executor::{ExecutionNode, GenericNode, SetupFaliure, TaskFaliure};
+use crate::platform_executor::{
+    DeploymentTask, ExecutionNode, GenericNode, NodeUtils, QueueTask, SetupFaliure, TaskFaliure,
+};
 use crate::rabbit::{
     deployment_message::DeploymentMessage, sysinfo_message::SysinfoMessage, QueueLabel,
     RabbitBroker, RabbitMessage,
@@ -11,10 +13,9 @@ use crate::schema::Query;
 use async_trait::async_trait;
 use dotenv;
 use juniper::EmptyMutation;
-use log::info;
+use log::{info, warn};
 use std::fs;
-use std::future::Future;
-use std::pin::Pin;
+use std::marker::PhantomData;
 use std::sync::{Arc, Mutex};
 use sysinfo::SystemExt;
 
@@ -27,6 +28,37 @@ pub struct Orchestrator {
 
 // TODO add broker to utils
 
+fn create_api_server(o: &'static Orchestrator) -> tokio::task::JoinHandle<()> {
+    let options = rocket_cors::CorsOptions {
+        ..Default::default()
+    }
+    .to_cors()
+    .unwrap();
+
+    // launch rocket
+    let server = tokio::spawn(async move {
+        rocket::ignite()
+            .manage(ManagedDatabase::new(o.db_ref.clone()))
+            .manage(crate::routes::Schema::new(
+                Query,
+                EmptyMutation::<Database>::new(),
+            ))
+            .mount(
+                "/",
+                rocket::routes![
+                    crate::routes::root,
+                    crate::routes::graphiql,
+                    crate::routes::get_graphql_handler,
+                    crate::routes::post_graphql_handler,
+                    crate::routes::site
+                ],
+            )
+            .attach(options)
+            .launch();
+    });
+    server
+}
+
 impl Orchestrator {
     /// Creates a new Orchestrator Object
     pub fn new(system_id: &str, rabbit_addr: &str) -> Orchestrator {
@@ -38,38 +70,7 @@ impl Orchestrator {
             node_utils: GenericNode::new(system_id, rabbit_addr),
         }
     }
-
-    fn create_api_server(&'static self) -> tokio::task::JoinHandle<()> {
-        let options = rocket_cors::CorsOptions {
-            ..Default::default()
-        }
-        .to_cors()
-        .unwrap();
-
-        // launch rocket
-        let server = tokio::spawn(async move {
-            rocket::ignite()
-                .manage(ManagedDatabase::new(self.db_ref.clone()))
-                .manage(crate::routes::Schema::new(
-                    Query,
-                    EmptyMutation::<Database>::new(),
-                ))
-                .mount(
-                    "/",
-                    rocket::routes![
-                        crate::routes::root,
-                        crate::routes::graphiql,
-                        crate::routes::get_graphql_handler,
-                        crate::routes::post_graphql_handler,
-                        crate::routes::site
-                    ],
-                )
-                .attach(options)
-                .launch();
-        });
-        server
-    }
-
+    /*
     async fn fetch_ui(&self) -> () {
         let git_data =
             crate::gitapi::GitApi::get_tail_commits_for_repo_branches("ethanshry", "kraken-ui")
@@ -109,12 +110,12 @@ impl Orchestrator {
         };
 
         if sha == "" {
-            println!("No build branch found, cannot update kraken-ui");
+            info!("No build branch found, cannot update kraken-ui");
             return;
         }
 
         if should_update_ui {
-            println!("Cloning updated UI...");
+            info!("Cloning updated UI...");
             clone_remote_branch(
                 "https://github.com/ethanshry/Kraken-UI.git",
                 "build",
@@ -126,10 +127,11 @@ impl Orchestrator {
             fs::remove_dir_all("tmp/site").unwrap();
         }
 
-        println!("Kraken-UI is now available at commit SHA: {}", sha);
+        info!("Kraken-UI is now available at commit SHA: {}", sha);
     }
+    */
 
-    fn deploy_rabbit_instance() {}
+    pub fn deploy_rabbit_instance(&self) {}
 }
 
 #[async_trait]
@@ -138,21 +140,39 @@ impl ExecutionNode for Orchestrator {
         // clear all tmp files
         clear_tmp();
 
-        // TODO connect to rabbit
+        // Establish RabbitMQ
+        self.deploy_rabbit_instance();
 
-        // establish db connection
-        let mut db = Database::new();
+        match self.node_utils.connect_to_rabbit_instance().await {
+            Ok(b) => self.node_utils.broker = Some(b),
+            Err(e) => {
+                warn!("{}", e);
+                return Err(SetupFaliure::NoRabbit);
+            }
+        }
 
-        let platform: Platform = crate::utils::load_or_create_platform(&mut db);
+        // Unwrap is safe here because we will have returned Err if broker is None
+        self.node_utils
+            .broker
+            .unwrap()
+            .declare_queue(QueueLabel::Sysinfo.as_str())
+            .await;
 
-        println!("Platform: {:?}", platform);
+        self.node_utils
+            .broker
+            .unwrap()
+            .declare_queue(QueueLabel::Deployment.as_str())
+            .await;
 
-        let db_ref = Arc::new(Mutex::new(db));
+        // TODO what is this for?
+        // todo move into this struct
+        let platform: Platform = crate::utils::load_or_create_platform(&mut self.database.unwrap());
 
-        let arc = db_ref.clone();
+        info!("Platform: {:?}", platform);
 
         // closure for auto unlock
         || -> () {
+            let arc = self.db_ref.clone();
             let mut db = arc.lock().unwrap();
             db.add_platform_service(Service::new(
                 "rabbitmq",
@@ -164,6 +184,9 @@ impl ExecutionNode for Orchestrator {
         }();
 
         // download site
+        //self.fetch_ui().await;
+
+        self.node_utils.queue_consumers = Some(vec![]);
 
         // setup dns records
 
@@ -171,7 +194,7 @@ impl ExecutionNode for Orchestrator {
 
         // consumer sysinfo queue
         let sysinfo_consumer = {
-            let arc = db_ref.clone();
+            let arc = self.db_ref.clone();
             let system_uuid = self.node_utils.system_id.clone();
             let addr = self.node_utils.rabbit_addr.clone();
             let handler = move |data: Vec<u8>| {
@@ -205,9 +228,9 @@ impl ExecutionNode for Orchestrator {
                 return ();
             };
             tokio::spawn(async move {
-                let broker = match RabbitBroker::new(&addr).await {
-                    Some(b) => b,
-                    None => panic!("Could not establish rabbit connection"),
+                let broker = match self.node_utils.connect_to_rabbit_instance().await {
+                    Ok(b) => b,
+                    Err(e) => panic!("Could not establish rabbit connection"),
                 };
                 broker
                     .consume_queue(&system_uuid, QueueLabel::Sysinfo.as_str(), &handler)
@@ -215,9 +238,15 @@ impl ExecutionNode for Orchestrator {
             })
         };
 
+        /*
+        self.node_utils.queue_consumers.unwrap().push(QueueTask {
+            task: sysinfo_consumer,
+            queue_label: QueueLabel::Sysinfo.as_str(),
+        });
+        */
         // consume deployment status queue
         let deployment_consumer = {
-            let arc = db_ref.clone();
+            let arc = self.db_ref.clone();
 
             let system_uuid = self.node_utils.system_id.clone();
             let addr = self.node_utils.rabbit_addr.clone();
@@ -240,15 +269,21 @@ impl ExecutionNode for Orchestrator {
             };
 
             tokio::spawn(async move {
-                let broker = match RabbitBroker::new(&addr).await {
-                    Some(b) => b,
-                    None => panic!("Could not establish rabbit connection"),
+                let broker = match self.node_utils.connect_to_rabbit_instance().await {
+                    Ok(b) => b,
+                    Err(e) => panic!("Could not establish rabbit connection"),
                 };
                 broker
-                    .consume_queue(&system_uuid, QueueLabel::Sysinfo.as_str(), &handler)
+                    .consume_queue(&system_uuid, QueueLabel::Deployment.as_str(), &handler)
                     .await;
             })
         };
+        /*
+        self.node_utils.queue_consumers.unwrap().push(QueueTask {
+            task: deployment_consumer,
+            queue_label: QueueLabel::Deployment.as_str(),
+        });
+        */
         // work sender queue
 
         // You can also deserialize this
@@ -261,10 +296,11 @@ impl ExecutionNode for Orchestrator {
 
     async fn execute(&self) -> Result<(), TaskFaliure> {
         // Thread to post sysinfo every 5 seconds
+        /*
         let system_status_proc = {
             let system_uuid = self.node_utils.system_id.clone();
 
-            let publisher = broker.get_channel().await;
+            let publisher = self.node_utils.broker.unwrap().get_channel().await;
 
             tokio::spawn(async move {
                 let mut msg = SysinfoMessage::new(&system_uuid);
@@ -283,7 +319,7 @@ impl ExecutionNode for Orchestrator {
         };
 
         system_status_proc.await;
-
+        */
         Ok(())
     }
 }
