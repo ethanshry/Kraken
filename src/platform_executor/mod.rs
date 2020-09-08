@@ -42,18 +42,11 @@ impl GenericNode {
     }
 }
 
-#[async_trait]
-trait NodeUtils {
-    async fn connect_to_rabbit_instance(&self) -> Result<RabbitBroker, String>;
-}
-
-#[async_trait]
-impl NodeUtils for GenericNode {
-    async fn connect_to_rabbit_instance(&self) -> Result<RabbitBroker, String> {
-        match RabbitBroker::new(&self.rabbit_addr).await {
-            Some(b) => Ok(b),
-            None => Err(String::from("Failed to connect to broker")),
-        }
+// TODO make this more complex (i.e. exponential backoff or smtn)
+pub async fn connect_to_rabbit_instance(addr: &str) -> Result<RabbitBroker, String> {
+    match RabbitBroker::new(addr).await {
+        Some(b) => Ok(b),
+        None => Err(String::from("Failed to connect to broker")),
     }
 }
 
