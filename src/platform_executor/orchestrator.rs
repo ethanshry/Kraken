@@ -2,9 +2,7 @@ use crate::db::{Database, ManagedDatabase};
 use crate::file_utils::{clear_tmp, copy_dir_contents_to_static};
 use crate::git_utils::clone_remote_branch;
 use crate::model::{Platform, Service, ServiceStatus};
-use crate::platform_executor::{
-    DeploymentTask, ExecutionNode, GenericNode, QueueTask, SetupFaliure, TaskFaliure,
-};
+use crate::platform_executor::{ExecutionNode, GenericNode, SetupFaliure, Task, TaskFaliure};
 use crate::rabbit::{
     deployment_message::DeploymentMessage, sysinfo_message::SysinfoMessage, QueueLabel,
     RabbitBroker, RabbitMessage,
@@ -16,29 +14,31 @@ use juniper::EmptyMutation;
 use log::{info, warn};
 use std::fs;
 use std::marker::PhantomData;
+use std::process::Command;
 use std::sync::{Arc, Mutex};
 use sysinfo::SystemExt;
 
 pub struct Orchestrator {
-    api_server: (),
-    database: Option<Database>,
+    api_server: Option<tokio::task::JoinHandle<()>>,
+    //database: Database,
     db_ref: Arc<Mutex<Database>>,
-    node_utils: GenericNode,
 }
 
 // TODO add broker to utils
 
-pub fn create_api_server(o: &'static Orchestrator) -> tokio::task::JoinHandle<()> {
+pub fn create_api_server(o: &Orchestrator) -> tokio::task::JoinHandle<()> {
     let options = rocket_cors::CorsOptions {
         ..Default::default()
     }
     .to_cors()
     .unwrap();
 
+    let db_ref = o.db_ref.clone();
+
     // launch rocket
     let server = tokio::spawn(async move {
         rocket::ignite()
-            .manage(ManagedDatabase::new(o.db_ref.clone()))
+            .manage(ManagedDatabase::new(db_ref))
             .manage(crate::routes::Schema::new(
                 Query,
                 EmptyMutation::<Database>::new(),
@@ -47,6 +47,7 @@ pub fn create_api_server(o: &'static Orchestrator) -> tokio::task::JoinHandle<()
                 "/",
                 rocket::routes![
                     crate::routes::root,
+                    crate::routes::ping,
                     crate::routes::graphiql,
                     crate::routes::get_graphql_handler,
                     crate::routes::post_graphql_handler,
@@ -117,75 +118,91 @@ async fn fetch_ui(o: &Orchestrator) -> () {
     info!("Kraken-UI is now available at commit SHA: {}", sha);
 }
 
-pub fn deploy_rabbit_instance(o: &Orchestrator) {}
+pub fn deploy_rabbit_instance(node: &GenericNode, o: &Orchestrator) -> Result<(), String> {
+    match Command::new("make").arg("spinup-rabbit").output() {
+        Ok(_) => {
+            || -> () {
+                let arc = o.db_ref.clone();
+                let mut db = arc.lock().unwrap();
+                db.add_platform_service(Service::new(
+                    "rabbitmq",
+                    "0.1.0",
+                    &node.rabbit_addr,
+                    ServiceStatus::OK,
+                ))
+                .unwrap();
+            }();
+            // TODO figure out how to be better- somehow, rabbit is not OK as soon as docker has spun up
+            std::thread::sleep(std::time::Duration::new(15, 0));
+            Ok(())
+        }
+        Err(_) => Err(String::from("Failed to create rabbit instance")),
+    }
+}
 
 impl Orchestrator {
     /// Creates a new Orchestrator Object
-    pub fn new(system_id: &str, rabbit_addr: &str) -> Orchestrator {
+    pub fn new() -> Orchestrator {
         let db = Database::new();
         Orchestrator {
-            api_server: (),
-            database: Some(db),
+            api_server: None,
+            //database: db,
             db_ref: Arc::new(Mutex::new(db)),
-            node_utils: GenericNode::new(system_id, rabbit_addr),
         }
     }
 }
 
-async fn setup(o: &mut Orchestrator) -> Result<(), SetupFaliure> {
+pub async fn setup(node: &mut GenericNode, o: &mut Orchestrator) -> Result<(), SetupFaliure> {
+    // TODO load platform information from a save state
+    /*let platform: Platform =
+        crate::utils::load_or_create_platform(&mut o.database.as_ref().unwrap());
+
+    info!("Platform: {:?}", platform);
+    */
+
     // clear all tmp files
     clear_tmp();
 
-    // Establish RabbitMQ
-    deploy_rabbit_instance(o);
+    // download site
+    let ui = fetch_ui(o);
 
-    match crate::platform_executor::connect_to_rabbit_instance(&o.node_utils.rabbit_addr).await {
-        Ok(b) => o.node_utils.broker = Some(b),
+    // Establish RabbitMQ
+    if let Err(e) = deploy_rabbit_instance(&node, &o) {
+        warn!("{}", e);
+        return Err(SetupFaliure::BadRabbit);
+    }
+
+    // Validate connection is possible
+    match crate::platform_executor::connect_to_rabbit_instance(&node.rabbit_addr).await {
+        Ok(b) => node.broker = Some(b),
         Err(e) => {
             warn!("{}", e);
             return Err(SetupFaliure::NoRabbit);
         }
     }
 
+    info!("Succesfully established RabbitMQ service");
+
     // Unwrap is safe here because we will have returned Err if broker is None
-    o.node_utils
-        .broker
+    node.broker
         .as_ref()
         .unwrap()
         .declare_queue(QueueLabel::Sysinfo.as_str())
         .await;
 
-    o.node_utils
-        .broker
+    node.broker
         .as_ref()
         .unwrap()
         .declare_queue(QueueLabel::Deployment.as_str())
         .await;
 
-    // TODO what is this for?
-    // todo move into this struct
-    /*let platform: Platform =
-        crate::utils::load_or_create_platform(&mut o.database.as_ref().unwrap());
-
-    info!("Platform: {:?}", platform);
-    */
-    // closure for auto unlock
-    || -> () {
-        let arc = o.db_ref.clone();
-        let mut db = arc.lock().unwrap();
-        db.add_platform_service(Service::new(
-            "rabbitmq",
-            "0.1.0",
-            &o.node_utils.rabbit_addr,
-            ServiceStatus::OK,
-        ))
-        .unwrap();
-    }();
-
-    // download site
-    fetch_ui(o).await;
-
-    o.node_utils.queue_consumers = Some(vec![]);
+    // send system stats
+    let publish_node_stats_task =
+        crate::platform_executor::get_publish_node_system_stats_task(node).await;
+    node.worker_tasks.push(Task {
+        task: publish_node_stats_task,
+        label: String::from("NodeStats"),
+    });
 
     // setup dns records
 
@@ -194,8 +211,8 @@ async fn setup(o: &mut Orchestrator) -> Result<(), SetupFaliure> {
     // consumer sysinfo queue
     let sysinfo_consumer = {
         let arc = o.db_ref.clone();
-        let system_uuid = o.node_utils.system_id.clone();
-        let addr = o.node_utils.rabbit_addr.clone();
+        let system_uuid = node.system_id.clone();
+        let addr = node.rabbit_addr.clone();
         let handler = move |data: Vec<u8>| {
             let (node, message) = SysinfoMessage::deconstruct_message(&data);
             info!("Recieved Message on the Sysinfo channel");
@@ -229,37 +246,24 @@ async fn setup(o: &mut Orchestrator) -> Result<(), SetupFaliure> {
         tokio::spawn(async move {
             let broker = match crate::platform_executor::connect_to_rabbit_instance(&addr).await {
                 Ok(b) => b,
-                Err(e) => panic!("Could not establish rabbit connection"),
+                Err(_) => panic!("Could not establish rabbit connection"),
             };
             broker
                 .consume_queue(&system_uuid, QueueLabel::Sysinfo.as_str(), &handler)
                 .await;
         })
     };
-    /*
-    o.node_utils
-        .queue_consumers
-        .as_ref()
-        .unwrap()
-        .push(QueueTask {
-            task: sysinfo_consumer,
-            queue_label: String::from(QueueLabel::Sysinfo.as_str()),
-        });
-        */
-    if let Some(mut queue) = &o.node_utils.queue_consumers {
-        queue.push(QueueTask {
-            task: sysinfo_consumer,
-            queue_label: String::from(QueueLabel::Sysinfo.as_str()),
-        });
-    }
+    node.queue_consumers.push(Task {
+        task: sysinfo_consumer,
+        label: String::from(QueueLabel::Sysinfo.as_str()),
+    });
     // consume deployment status queue
     let deployment_consumer = {
         let arc = o.db_ref.clone();
 
-        let system_uuid = o.node_utils.system_id.clone();
-        let addr = o.node_utils.rabbit_addr.clone();
+        let system_uuid = node.system_id.clone();
+        let addr = node.rabbit_addr.clone();
         let handler = move |data: Vec<u8>| {
-            let (node, message) = SysinfoMessage::deconstruct_message(&data);
             let (node, message) = DeploymentMessage::deconstruct_message(&data);
             info!("Recieved Message on the Deployment channel");
 
@@ -286,14 +290,11 @@ async fn setup(o: &mut Orchestrator) -> Result<(), SetupFaliure> {
                 .await;
         })
     };
-    o.node_utils
-        .queue_consumers
-        .as_ref()
-        .unwrap()
-        .push(QueueTask {
-            task: deployment_consumer,
-            queue_label: String::from(QueueLabel::Deployment.as_str()),
-        });
+    node.queue_consumers.push(Task {
+        task: deployment_consumer,
+        label: String::from(QueueLabel::Deployment.as_str()),
+    });
+
     // work sender queue
 
     // You can also deserialize this
@@ -301,34 +302,14 @@ async fn setup(o: &mut Orchestrator) -> Result<(), SetupFaliure> {
     // monitor git
 
     // deploy docker services if determined to be best practice
+
+    ui.await;
+
+    o.api_server = Some(create_api_server(o));
     Ok(())
 }
 
-async fn execute(o: &Orchestrator) -> Result<(), TaskFaliure> {
-    // Thread to post sysinfo every 5 seconds
-    /*
-    let system_status_proc = {
-        let system_uuid = self.node_utils.system_id.clone();
-
-        let publisher = self.node_utils.broker.unwrap().get_channel().await;
-
-        tokio::spawn(async move {
-            let mut msg = SysinfoMessage::new(&system_uuid);
-            loop {
-                std::thread::sleep(std::time::Duration::new(5, 0));
-                let system = sysinfo::System::new_all();
-                msg.update_message(
-                    system.get_free_memory(),
-                    system.get_used_memory(),
-                    system.get_uptime(),
-                    system.get_load_average().five as f32,
-                );
-                msg.send(&publisher, QueueLabel::Sysinfo.as_str()).await;
-            }
-        })
-    };
-
-    system_status_proc.await;
-    */
+pub async fn execute(o: &Orchestrator) -> Result<(), TaskFaliure> {
+    // Todo look for work to distribute and do it
     Ok(())
 }

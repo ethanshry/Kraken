@@ -19,6 +19,12 @@ pub fn root() -> content::Html<String> {
     content::Html("Waiting for service to download platform...".to_string())
 }
 
+#[rocket::get("/ping")]
+pub fn ping() -> content::Plain<String> {
+    // TODO point to static site
+    content::Plain("pong".to_string())
+}
+
 #[rocket::get("/graphiql")]
 pub fn graphiql() -> content::Html<String> {
     juniper_rocket::graphiql_source("/graphql")

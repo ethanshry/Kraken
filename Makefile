@@ -1,10 +1,14 @@
-.PHONY: documentation build-rabbit run-rabbit
+SHELL := /bin/bash
+
+.PHONY: documentation build-rabbit run-rabbit cleanup
 
 documentation:
 	cargo doc
 
-build-rabbit:
-	docker run -d --hostname my-rabbit --name rabi -p 5672:5672 rabbitmq:3
+spinup-rabbit:
+	docker run -d --hostname my-rabbit -p 5672:5672 -p 15672:15672 rabbitmq:3-management
 
-run-rabbit:
-	docker start rab
+cleanup:
+	(docker ps -a | grep tcp) && docker stop $$(docker ps -aq)
+	docker container prune -y
+	docker images prune -y
