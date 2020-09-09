@@ -6,7 +6,11 @@ use uuid::Uuid;
 
 pub fn get_system_id() -> String {
     return match fs::read_to_string("id.txt") {
-        Ok(contents) => contents.parse::<String>().unwrap(),
+        Ok(contents) => {
+            let id = contents.parse::<String>().unwrap();
+            std::env::set_var("SYSID", &id);
+            return id;
+        }
         Err(_) => {
             let mut file = fs::File::create("id.txt").unwrap();
             let contents = Uuid::new_v4();

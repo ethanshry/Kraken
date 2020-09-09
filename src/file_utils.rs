@@ -3,6 +3,11 @@ use std::fs;
 /// Copies a directory's contents to crate/static/
 /// Will persist subdirectory structure
 pub fn copy_dir_contents_to_static(dir: &str) -> () {
+    match fs::remove_dir_all("static") {
+        Ok(_) => true,
+        Err(_) => false,
+    };
+    fs::create_dir("static").unwrap();
     fn copy_dir_with_parent(root: &str, dir: &str) -> () {
         if root != "" {
             fs::create_dir(format!("static/{}", root)).unwrap();
@@ -42,22 +47,23 @@ pub fn copy_dockerfile_to_dir(dockerfile_ref: &str, file_path: &str) -> bool {
         format!("dockerfiles/{}", dockerfile_ref),
         format!("{}/Dockerfile", file_path),
     ) {
-        Ok(_) => {
-            true
-        },
+        Ok(_) => true,
         Err(e) => {
-            println!("There was an error copying the dockerfile {} to {}: {}", dockerfile_ref, file_path, e);
+            println!(
+                "There was an error copying the dockerfile {} to {}: {}",
+                dockerfile_ref, file_path, e
+            );
             false
-        },
+        }
     }
 }
 
-/// Clears the crate's tmp directory if it exists. 
+/// Clears the crate's tmp directory if it exists.
 /// Returns true if directory existed and was removed
 /// Returns false if directory did not exist
 pub fn clear_tmp() -> bool {
     match fs::remove_dir_all("tmp") {
         Ok(_) => true,
-        Err(_) => false
+        Err(_) => false,
     }
 }
