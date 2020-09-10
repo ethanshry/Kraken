@@ -1,5 +1,7 @@
 # Kraken
 
+[![Actions Status](https://github.com/ethanshry/Kraken/workflows/Rust/badge.svg)](https://github.com/ethanshry/Kraken/actions)
+
 LAN-based cloud deployment environment
 
 ## Development Setup
