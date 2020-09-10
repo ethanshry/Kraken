@@ -1,6 +1,7 @@
 use crate::model::{
     ApplicationStatus, Deployment, Node, Orchestrator, OrchestratorInterface, Service,
 };
+use log::{info, warn};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
@@ -82,7 +83,7 @@ impl Database {
     }
 
     pub fn insert_node(&mut self, node: &Node) -> Option<Node> {
-        println!("inserting {}", node.id);
+        info!("inserting {}", node.id);
         self.nodes.insert(node.id.to_owned(), node.to_owned())
     }
 
@@ -104,9 +105,25 @@ impl Database {
     }
 
     pub fn insert_deployment(&mut self, deployment: &Deployment) -> Option<Deployment> {
-        println!("inserting {}", deployment.id);
+        info!("inserting {}", deployment.id);
         self.deployments
             .insert(deployment.id.to_owned(), deployment.to_owned())
+    }
+
+    pub fn update_deployment(
+        &mut self,
+        deployment_id: &str,
+        deployment: &Deployment,
+    ) -> Option<Deployment> {
+        info!("updating {}", deployment.id);
+        if !self.deployments.contains_key(deployment_id) {
+            warn!(
+                "Deployment id: {} does not exist, inserting new deployment instead",
+                deployment.id
+            );
+        }
+        self.deployments
+            .insert(deployment_id.to_owned(), deployment.to_owned())
     }
 
     pub fn get_deployments(&self) -> Option<Vec<Deployment>> {

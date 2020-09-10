@@ -1,7 +1,7 @@
 use crate::db::{Database, ManagedDatabase};
 use crate::file_utils::{clear_tmp, copy_dir_contents_to_static};
 use crate::git_utils::clone_remote_branch;
-use crate::model::{Platform, Service, ServiceStatus};
+use crate::model::{ApplicationStatus, Platform, Service, ServiceStatus};
 use crate::platform_executor::{ExecutionNode, GenericNode, SetupFaliure, Task, TaskFaliure};
 use crate::rabbit::{
     deployment_message::DeploymentMessage, sysinfo_message::SysinfoMessage, QueueLabel,
@@ -21,7 +21,7 @@ use sysinfo::SystemExt;
 pub struct Orchestrator {
     api_server: Option<tokio::task::JoinHandle<()>>,
     //database: Database,
-    db_ref: Arc<Mutex<Database>>,
+    pub db_ref: Arc<Mutex<Database>>,
 }
 
 // TODO add broker to utils
@@ -311,5 +311,35 @@ pub async fn setup(node: &mut GenericNode, o: &mut Orchestrator) -> Result<(), S
 
 pub async fn execute(o: &Orchestrator) -> Result<(), TaskFaliure> {
     // Todo look for work to distribute and do it
+    || -> () {
+        let arc = o.db_ref.clone();
+        let db = arc.lock().unwrap();
+        let deployments = db.get_deployments();
+        drop(db);
+        if let Some(d) = deployments {
+            for mut deployment in d {
+                if deployment.status == ApplicationStatus::REQUESTED {
+                    // Look for free nodes to distribute tasks to
+                    deployment.status = ApplicationStatus::INITIALIZED;
+                    let mut db = arc.lock().unwrap();
+                    db.update_deployment(&deployment.id, &deployment);
+                    let nodes = db.get_nodes();
+                    match nodes {
+                        None => {
+                            deployment.status = ApplicationStatus::ERRORED;
+                            db.update_deployment(&deployment.id, &deployment);
+                        }
+                        Some(nodes) => {
+                            // WIP send message to node work queue.
+                            // This involves each of the nodes establishing their own work queue.
+                            // Or something.
+                            // Thinking we have an Arc in GenericNode so rabbit can inject work into a vec, and execute can do work in that vec as requested (this could include asking for docker logs, etc)
+                            // TODO make this process smart
+                        }
+                    }
+                }
+            }
+        }
+    }();
     Ok(())
 }

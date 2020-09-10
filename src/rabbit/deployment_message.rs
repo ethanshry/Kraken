@@ -15,7 +15,7 @@ impl DeploymentMessage {
         DeploymentMessage {
             system_identifier: system_identifier.to_owned(),
             deployment_id: deployment_id.to_owned(),
-            deployment_status: ApplicationStatus::INITIALIZED,
+            deployment_status: ApplicationStatus::REQUESTED,
             deployment_status_description: "".to_owned(),
         }
     }

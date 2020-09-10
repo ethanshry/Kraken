@@ -1,4 +1,5 @@
 #![feature(proc_macro_hygiene, decl_macro, async_closure)]
+#![allow(dead_code)]
 
 #[macro_use]
 extern crate juniper;
@@ -20,6 +21,7 @@ mod platform_executor;
 mod rabbit;
 mod routes;
 mod schema;
+mod testing;
 mod utils;
 mod worker;
 
@@ -69,6 +71,8 @@ async fn main() -> Result<(), ()> {
         }
     }
 
+    testing::setup_experiment(&mut node, &mut orchestrator).await;
+
     loop {
         match node_mode {
             NodeMode::ORCHESTRATOR => {
@@ -91,5 +95,6 @@ async fn main() -> Result<(), ()> {
         std::thread::sleep(std::time::Duration::new(0, 500000000));
     }
 
+    #[allow(unreachable_code)]
     Ok(())
 }

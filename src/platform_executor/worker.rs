@@ -1,21 +1,7 @@
-use crate::db::{Database, ManagedDatabase};
-use crate::file_utils::{clear_tmp, copy_dir_contents_to_static};
-use crate::git_utils::clone_remote_branch;
-use crate::model::{Platform, Service, ServiceStatus};
-use crate::platform_executor::{ExecutionNode, GenericNode, SetupFaliure, Task, TaskFaliure};
-use crate::rabbit::{
-    deployment_message::DeploymentMessage, sysinfo_message::SysinfoMessage, QueueLabel,
-    RabbitBroker, RabbitMessage,
-};
-use crate::schema::Query;
-use async_trait::async_trait;
-use dotenv;
-use juniper::EmptyMutation;
+use crate::file_utils::clear_tmp;
+use crate::platform_executor::{GenericNode, SetupFaliure, TaskFaliure};
+
 use log::{info, warn};
-use std::fs;
-use std::marker::PhantomData;
-use std::sync::{Arc, Mutex};
-use sysinfo::SystemExt;
 
 pub struct Worker {}
 

@@ -3,6 +3,7 @@ pub mod sysinfo_message;
 use async_trait::async_trait;
 use futures_util::stream::StreamExt;
 use lapin::{options::*, types::FieldTable, BasicProperties, Connection, ConnectionProperties};
+use log::error;
 use tokio_amqp::*;
 /// The interface between Kraken and RabbitMQ
 pub struct RabbitBroker {
@@ -46,7 +47,7 @@ impl RabbitBroker {
         match conn {
             Ok(c) => Some(RabbitBroker { conn: c }),
             Err(e) => {
-                println!("Error establishing conn: {:?}", e);
+                error!("Error establishing conn: {:?}", e);
                 None
             }
         }

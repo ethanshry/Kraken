@@ -129,8 +129,8 @@ impl Node {
         ram_used: Option<u64>,
         uptime: Option<u64>,
         load_avg_5: Option<f32>,
-        apps: Option<Vec<String>>,
-        services: Option<Vec<Service>>,
+        _apps: Option<Vec<String>>,
+        _services: Option<Vec<Service>>,
     ) -> Node {
         // TODO find a safer way to do this
         let n = Node::new(
@@ -188,8 +188,11 @@ impl Node {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Display, Clone, juniper::GraphQLEnum, EnumString)]
+#[derive(
+    Serialize, Deserialize, Debug, Display, Clone, PartialEq, juniper::GraphQLEnum, EnumString,
+)]
 pub enum ApplicationStatus {
+    REQUESTED,
     INITIALIZED,
     RETRIEVING,
     BUILDING,
@@ -292,7 +295,7 @@ impl Deployment {
         self.instances.push(Some(instance));
     }
 
-    pub fn remove_instance(&mut self, instance_id: &str) {
+    pub fn remove_instance(&mut self, _instance_id: &str) {
         // TODO complete
     }
 }
@@ -371,7 +374,7 @@ impl Platform {
         self.nodes.push(node);
     }
 
-    pub fn remove_node(&mut self, node_id: &str) {
+    pub fn remove_node(&mut self, _node_id: &str) {
         // TODO complete
     }
 
@@ -380,7 +383,7 @@ impl Platform {
         self.deployments.push(deployment);
     }
 
-    pub fn remove_deployment(&mut self, deployment_id: &str) {
+    pub fn remove_deployment(&mut self, _deployment_id: &str) {
         // TODO complete
     }
 }

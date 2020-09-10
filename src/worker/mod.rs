@@ -45,7 +45,7 @@ pub async fn handle_deployment(
 
     copy_dockerfile_to_dir(dockerfile_name, tmp_dir_path);
 
-    println!("module path is {}", module_path!());
+    info!("module path is {}", module_path!());
 
     msg.update_message(ApplicationStatus::BUILDING, "");
 
