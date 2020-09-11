@@ -16,7 +16,6 @@ pub async fn setup_experiment(_node: &mut GenericNode, o: &mut Orchestrator) {
             "",
             "",
             &vec![None],
-        ))
-        .unwrap();
+        ));
     }();
 }

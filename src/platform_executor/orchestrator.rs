@@ -1,7 +1,7 @@
 use crate::db::{Database, ManagedDatabase};
 use crate::file_utils::{clear_tmp, copy_dir_contents_to_static};
 use crate::git_utils::clone_remote_branch;
-use crate::model::{ApplicationStatus, Service, ServiceStatus};
+use crate::model::{ApplicationStatus, Node, Service, ServiceStatus};
 use crate::platform_executor::{GenericNode, SetupFaliure, Task, TaskFaliure};
 use crate::rabbit::{
     deployment_message::DeploymentMessage,
@@ -156,6 +156,17 @@ pub async fn setup(node: &mut GenericNode, o: &mut Orchestrator) -> Result<(), S
 
     info!("Platform: {:?}", platform);
     */
+    let arc = o.db_ref.clone();
+    let mut db = arc.lock().unwrap();
+    db.insert_node(&Node::new(
+        &node.system_id,
+        "Placeholder Model",
+        0,
+        0,
+        0,
+        0.0,
+    ));
+    drop(db);
 
     // clear all tmp files
     clear_tmp();
@@ -315,6 +326,7 @@ pub async fn execute(node: &GenericNode, o: &Orchestrator) -> Result<(), TaskFal
                     let mut db = arc.lock().unwrap();
                     db.update_deployment(&deployment.id, &deployment);
                     let nodes = db.get_nodes();
+                    info!("{:?}", nodes);
                     match nodes {
                         None => {
                             deployment.status = ApplicationStatus::ERRORED;
