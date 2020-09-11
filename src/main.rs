@@ -4,6 +4,7 @@
 #[macro_use]
 extern crate juniper;
 extern crate fs_extra;
+extern crate queues;
 extern crate rocket;
 extern crate rocket_cors;
 extern crate serde;
@@ -61,7 +62,13 @@ async fn main() -> Result<(), ()> {
 
     if node_mode == NodeMode::ORCHESTRATOR {
         match platform_executor::orchestrator::setup(&mut node, &mut orchestrator).await {
-            Ok(_) => {}
+            Ok(_) => {
+                // Now that we have a platform, re-establish the worker
+                worker = platform_executor::worker::Worker::new();
+                platform_executor::worker::setup(&mut node, &mut worker)
+                    .await
+                    .unwrap();
+            }
             Err(e) => {
                 error!("{:?}", e);
                 panic!(
@@ -76,21 +83,35 @@ async fn main() -> Result<(), ()> {
     loop {
         match node_mode {
             NodeMode::ORCHESTRATOR => {
-                match platform_executor::orchestrator::execute(&orchestrator).await {
+                match platform_executor::orchestrator::execute(&node, &orchestrator).await {
                     Ok(_) => {}
                     Err(faliure) => match faliure {
                         TaskFaliure::SigKill => {
                             panic!("Orchestrator indicated a critical execution faliure")
                         }
                     },
+                };
+                // An Orchestrator IS a worker, so do worker tasks too
+                // This may cause problems later due to sharing of Node information? Not sure
+                match platform_executor::worker::execute(&node, &mut worker).await {
+                    Ok(_) => {}
+                    Err(faliure) => match faliure {
+                        TaskFaliure::SigKill => {
+                            panic!("Worker indicated a critical execution faliure")
+                        }
+                    },
+                };
+            }
+            NodeMode::WORKER => {
+                match platform_executor::worker::execute(&node, &mut worker).await {
+                    Ok(_) => {}
+                    Err(faliure) => match faliure {
+                        TaskFaliure::SigKill => {
+                            panic!("Worker indicated a critical execution faliure")
+                        }
+                    },
                 }
             }
-            NodeMode::WORKER => match platform_executor::worker::execute(&worker).await {
-                Ok(_) => {}
-                Err(faliure) => match faliure {
-                    TaskFaliure::SigKill => panic!("Worker indicated a critical execution faliure"),
-                },
-            },
         }
         std::thread::sleep(std::time::Duration::new(0, 500000000));
     }

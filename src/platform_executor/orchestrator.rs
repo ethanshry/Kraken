@@ -1,22 +1,20 @@
 use crate::db::{Database, ManagedDatabase};
 use crate::file_utils::{clear_tmp, copy_dir_contents_to_static};
 use crate::git_utils::clone_remote_branch;
-use crate::model::{ApplicationStatus, Platform, Service, ServiceStatus};
-use crate::platform_executor::{ExecutionNode, GenericNode, SetupFaliure, Task, TaskFaliure};
+use crate::model::{ApplicationStatus, Service, ServiceStatus};
+use crate::platform_executor::{GenericNode, SetupFaliure, Task, TaskFaliure};
 use crate::rabbit::{
-    deployment_message::DeploymentMessage, sysinfo_message::SysinfoMessage, QueueLabel,
-    RabbitBroker, RabbitMessage,
+    deployment_message::DeploymentMessage,
+    sysinfo_message::SysinfoMessage,
+    work_request_message::{WorkRequestMessage, WorkRequestType},
+    QueueLabel, RabbitMessage,
 };
 use crate::schema::Query;
-use async_trait::async_trait;
-use dotenv;
 use juniper::EmptyMutation;
 use log::{info, warn};
 use std::fs;
-use std::marker::PhantomData;
 use std::process::Command;
 use std::sync::{Arc, Mutex};
-use sysinfo::SystemExt;
 
 pub struct Orchestrator {
     api_server: Option<tokio::task::JoinHandle<()>>,
@@ -146,7 +144,6 @@ impl Orchestrator {
         let db = Database::new();
         Orchestrator {
             api_server: None,
-            //database: db,
             db_ref: Arc::new(Mutex::new(db)),
         }
     }
@@ -195,14 +192,6 @@ pub async fn setup(node: &mut GenericNode, o: &mut Orchestrator) -> Result<(), S
         .unwrap()
         .declare_queue(QueueLabel::Deployment.as_str())
         .await;
-
-    // send system stats
-    let publish_node_stats_task =
-        crate::platform_executor::get_publish_node_system_stats_task(node).await;
-    node.worker_tasks.push(Task {
-        task: publish_node_stats_task,
-        label: String::from("NodeStats"),
-    });
 
     // setup dns records
 
@@ -309,9 +298,10 @@ pub async fn setup(node: &mut GenericNode, o: &mut Orchestrator) -> Result<(), S
     Ok(())
 }
 
-pub async fn execute(o: &Orchestrator) -> Result<(), TaskFaliure> {
+pub async fn execute(node: &GenericNode, o: &Orchestrator) -> Result<(), TaskFaliure> {
     // Todo look for work to distribute and do it
-    || -> () {
+    async || -> () {
+        // Look through deployments for new deployments which need to be scheduled
         let arc = o.db_ref.clone();
         let db = arc.lock().unwrap();
         let deployments = db.get_deployments();
@@ -319,6 +309,7 @@ pub async fn execute(o: &Orchestrator) -> Result<(), TaskFaliure> {
         if let Some(d) = deployments {
             for mut deployment in d {
                 if deployment.status == ApplicationStatus::REQUESTED {
+                    // TODO Validate deployment here?
                     // Look for free nodes to distribute tasks to
                     deployment.status = ApplicationStatus::INITIALIZED;
                     let mut db = arc.lock().unwrap();
@@ -330,16 +321,40 @@ pub async fn execute(o: &Orchestrator) -> Result<(), TaskFaliure> {
                             db.update_deployment(&deployment.id, &deployment);
                         }
                         Some(nodes) => {
-                            // WIP send message to node work queue.
-                            // This involves each of the nodes establishing their own work queue.
-                            // Or something.
-                            // Thinking we have an Arc in GenericNode so rabbit can inject work into a vec, and execute can do work in that vec as requested (this could include asking for docker logs, etc)
-                            // TODO make this process smart
+                            let mut curr_node = &nodes[0];
+                            for node in nodes.iter() {
+                                // For now, pick the node with the fewest application instances
+                                // TODO make this process smart
+                                if node.application_instances.len()
+                                    < curr_node.application_instances.len()
+                                {
+                                    curr_node = node;
+                                }
+                            }
+
+                            // curr_node will recieve the work
+
+                            // Send work to curr_node
+                            let msg = WorkRequestMessage::new(
+                                WorkRequestType::RequestDeployment,
+                                Some(&deployment.id),
+                                Some(&deployment.src_url),
+                                None,
+                            );
+                            let publisher = node.broker.as_ref().unwrap().get_channel().await;
+                            msg.send(&publisher, &node.system_id).await;
+
+                            // Deployment has been scheduled
                         }
                     }
                 }
             }
         }
-    }();
+
+        // TODO look for deployments which need to be updated
+
+        // TODO look for deployments which need to be cancelled
+    }()
+    .await;
     Ok(())
 }

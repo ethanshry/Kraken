@@ -33,5 +33,6 @@ tokio-amqp = "0.1.3"
 tokio = { version= "0.2", features=["rt-threaded", "macros"]}
 toml = "0.5"
 uuid = { version = "0.8", features = ["serde", "v4"] }
+queues = "1.1"
 
 # TODO look into warp over rocket

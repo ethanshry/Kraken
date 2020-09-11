@@ -1,5 +1,6 @@
 pub mod deployment_message;
 pub mod sysinfo_message;
+pub mod work_request_message;
 use async_trait::async_trait;
 use futures_util::stream::StreamExt;
 use lapin::{options::*, types::FieldTable, BasicProperties, Connection, ConnectionProperties};
