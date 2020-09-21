@@ -192,14 +192,17 @@ impl Node {
     Serialize, Deserialize, Debug, Display, Clone, PartialEq, juniper::GraphQLEnum, EnumString,
 )]
 pub enum ApplicationStatus {
-    REQUESTED,
-    INITIALIZED,
-    RETRIEVING,
-    BUILDING,
-    TESTING,
-    DEPLOYING,
-    DEPLOYED,
-    ERRORED,
+    DeploymentRequested,
+    ValidatingDeploymentData,
+    RetrievingApplicationData,
+    DelegatingDeployment,
+    BuildingDeployment,
+    TestingDeployment,
+    Deploying,
+    Running,
+    Errored,
+    DestructionRequested,
+    DestructionInProgress,
 }
 
 #[derive(Serialize, Debug, Deserialize, Clone, juniper::GraphQLObject)]

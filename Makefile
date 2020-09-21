@@ -10,5 +10,4 @@ spinup-rabbit:
 
 cleanup:
 	(docker ps -a | grep tcp) && docker stop $$(docker ps -aq)
-	docker container prune -y
-	docker images prune -y
+	docker system prune

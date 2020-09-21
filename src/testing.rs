@@ -3,19 +3,22 @@ use crate::model::{ApplicationStatus, Deployment};
 use crate::platform_executor::orchestrator::Orchestrator;
 use crate::platform_executor::GenericNode;
 
+use uuid::Uuid;
+
 pub async fn setup_experiment(_node: &mut GenericNode, o: &mut Orchestrator) {
     || -> () {
-        let arc = o.db_ref.clone();
+        /*let arc = o.db_ref.clone();
         let mut db = arc.lock().unwrap();
         db.insert_deployment(&Deployment::new(
-            "d2697ce0-bb46-4622-bb2a-0340aae62514",
+            &Uuid::new_v4().to_hyphenated().to_string(),
             "https://github.com/ethanshry/scapegoat",
             "",
             "",
-            ApplicationStatus::REQUESTED,
+            ApplicationStatus::DeploymentRequested,
             "",
             "",
             &vec![None],
         ));
+        */
     }();
 }

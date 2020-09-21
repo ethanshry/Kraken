@@ -45,7 +45,7 @@ impl Database {
         let orchestrator = Orchestrator::new(OrchestratorInterface::new(
             None,
             None,
-            ApplicationStatus::ERRORED,
+            ApplicationStatus::Errored,
         ));
 
         Database {
@@ -78,12 +78,15 @@ impl Database {
         Ok(0)
     }
 
-    pub fn get_node(&self, node_id: &str) -> Option<&Node> {
-        self.nodes.get(node_id)
+    pub fn get_node(&self, node_id: &str) -> Option<Node> {
+        match self.nodes.get(node_id) {
+            Some(n) => Some(n.clone()),
+            None => None,
+        }
     }
 
     pub fn insert_node(&mut self, node: &Node) -> Option<Node> {
-        info!("inserting {}", node.id);
+        //info!("inserting {}", node.id);
         self.nodes.insert(node.id.to_owned(), node.to_owned())
     }
 
@@ -100,12 +103,15 @@ impl Database {
         }
     }
 
-    pub fn get_deployment(&self, deployment_id: &str) -> Option<&Deployment> {
-        self.deployments.get(deployment_id)
+    pub fn get_deployment(&self, deployment_id: &str) -> Option<Deployment> {
+        match self.deployments.get(deployment_id) {
+            Some(d) => Some(d.clone()),
+            None => None,
+        }
     }
 
     pub fn insert_deployment(&mut self, deployment: &Deployment) -> Option<Deployment> {
-        info!("inserting {}", deployment.id);
+        //info!("inserting {}", deployment.id);
         self.deployments
             .insert(deployment.id.to_owned(), deployment.to_owned())
     }

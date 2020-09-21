@@ -27,7 +27,7 @@ pub async fn handle_deployment(
     info!("Creating Container {}", &container_guid);
 
     msg.update_message(
-        ApplicationStatus::RETRIEVING,
+        ApplicationStatus::RetrievingApplicationData,
         &format!("Retrieving Application Data from {}", git_uri),
     );
 
@@ -47,20 +47,20 @@ pub async fn handle_deployment(
 
     info!("module path is {}", module_path!());
 
-    msg.update_message(ApplicationStatus::BUILDING, "");
+    msg.update_message(ApplicationStatus::BuildingDeployment, "");
 
     msg.send(&publisher, QueueLabel::Deployment.as_str()).await;
 
     let docker = DockerBroker::new().await;
     if let Some(docker) = docker {
-        let res = docker.build_image(tmp_dir_path).await;
+        let res = docker.build_image(tmp_dir_path, None).await;
         if let Ok(r) = res {
             info!("----- Docker Build Results for {} -----", r.image_id);
             info!("{:?}", r.log);
-            msg.update_message(ApplicationStatus::BUILDING, &r.log.join("\n"));
+            msg.update_message(ApplicationStatus::BuildingDeployment, &r.log.join("\n"));
             msg.send(&publisher, QueueLabel::Deployment.as_str()).await;
             msg.update_message(
-                ApplicationStatus::BUILDING,
+                ApplicationStatus::BuildingDeployment,
                 &format!(
                     "docker image created for {} with id {}",
                     &git_uri,
@@ -70,22 +70,22 @@ pub async fn handle_deployment(
             msg.send(&publisher, QueueLabel::Deployment.as_str()).await;
 
             // Image build went ok, now deploy the container
-            msg.update_message(ApplicationStatus::DEPLOYING, "");
+            msg.update_message(ApplicationStatus::Deploying, "");
             msg.send(&publisher, QueueLabel::Deployment.as_str()).await;
 
             let ids = docker.start_container(&r.image_id, 9000).await;
 
             if let Ok(id) = ids {
                 info!("Docker container started for {} with id {}", git_uri, id);
-                msg.update_message(ApplicationStatus::DEPLOYED, &format!("{}", id));
+                msg.update_message(ApplicationStatus::Running, &format!("{}", id));
                 msg.send(&publisher, QueueLabel::Deployment.as_str()).await;
             } else {
-                msg.update_message(ApplicationStatus::ERRORED, "Error in deployment");
+                msg.update_message(ApplicationStatus::Errored, "Error in deployment");
                 msg.send(&publisher, QueueLabel::Deployment.as_str()).await;
                 return Err(());
             }
         } else {
-            msg.update_message(ApplicationStatus::ERRORED, "Error in build process");
+            msg.update_message(ApplicationStatus::Errored, "Error in build process");
             msg.send(&publisher, QueueLabel::Deployment.as_str()).await;
             error!("Failed to build docker image for {}", &git_uri);
             return Err(());

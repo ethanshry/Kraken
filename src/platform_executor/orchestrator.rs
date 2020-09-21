@@ -9,7 +9,7 @@ use crate::rabbit::{
     work_request_message::{WorkRequestMessage, WorkRequestType},
     QueueLabel, RabbitMessage,
 };
-use crate::schema::Query;
+use crate::schema::{Mutation, Query};
 use juniper::EmptyMutation;
 use log::{info, warn};
 use std::fs;
@@ -37,10 +37,7 @@ pub fn create_api_server(o: &Orchestrator) -> tokio::task::JoinHandle<()> {
     let server = tokio::spawn(async move {
         rocket::ignite()
             .manage(ManagedDatabase::new(db_ref))
-            .manage(crate::routes::Schema::new(
-                Query,
-                EmptyMutation::<Database>::new(),
-            ))
+            .manage(crate::routes::Schema::new(Query, Mutation))
             .mount(
                 "/",
                 rocket::routes![
@@ -265,17 +262,30 @@ pub async fn setup(node: &mut GenericNode, o: &mut Orchestrator) -> Result<(), S
         let addr = node.rabbit_addr.clone();
         let handler = move |data: Vec<u8>| {
             let (node, message) = DeploymentMessage::deconstruct_message(&data);
-            info!("Recieved Message on the Deployment channel");
-
-            info!(
-                "{} : Deployment {}\n\t{} : {}",
-                node,
-                message.deployment_id,
-                message.deployment_status,
-                message.deployment_status_description
-            );
 
             // TODO add info to the db
+            let mut db = arc.lock().unwrap();
+            let deployment = db.get_deployment(&message.deployment_id);
+            match deployment {
+                Some(d) => {
+                    let mut updated_deployment = d.clone();
+                    updated_deployment.update_status(message.deployment_status.clone());
+                    db.update_deployment(&message.deployment_id, &updated_deployment);
+                    info!(
+                        "{} : Deployment {}\n\t{} : {}",
+                        node,
+                        message.deployment_id,
+                        message.deployment_status,
+                        message.deployment_status_description
+                    );
+                }
+                None => {
+                    warn!("Recieved the following deployment info for a deployment which does not exist in the database:\n{} : Deployment {}\n\t{} : {}", node,
+                    message.deployment_id,
+                    message.deployment_status,
+                    message.deployment_status_description);
+                }
+            }
 
             return ();
         };
@@ -283,7 +293,7 @@ pub async fn setup(node: &mut GenericNode, o: &mut Orchestrator) -> Result<(), S
         tokio::spawn(async move {
             let broker = match crate::platform_executor::connect_to_rabbit_instance(&addr).await {
                 Ok(b) => b,
-                Err(e) => panic!("Could not establish rabbit connection"),
+                Err(_) => panic!("Could not establish rabbit connection"),
             };
             broker
                 .consume_queue(&system_uuid, QueueLabel::Deployment.as_str(), &handler)
@@ -319,17 +329,17 @@ pub async fn execute(node: &GenericNode, o: &Orchestrator) -> Result<(), TaskFal
         drop(db);
         if let Some(d) = deployments {
             for mut deployment in d {
-                if deployment.status == ApplicationStatus::REQUESTED {
+                if deployment.status == ApplicationStatus::DeploymentRequested {
                     // TODO Validate deployment here?
                     // Look for free nodes to distribute tasks to
-                    deployment.status = ApplicationStatus::INITIALIZED;
+                    deployment.status = ApplicationStatus::ValidatingDeploymentData;
                     let mut db = arc.lock().unwrap();
                     db.update_deployment(&deployment.id, &deployment);
                     let nodes = db.get_nodes();
                     info!("{:?}", nodes);
                     match nodes {
                         None => {
-                            deployment.status = ApplicationStatus::ERRORED;
+                            deployment.status = ApplicationStatus::Errored;
                             db.update_deployment(&deployment.id, &deployment);
                         }
                         Some(nodes) => {

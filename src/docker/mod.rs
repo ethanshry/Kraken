@@ -140,8 +140,12 @@ impl DockerBroker {
     /// let docker = DockerBroker::new();
     /// docker.build_image("./tmp/test-proj"); // builds image 12345 and maps 9000->9000
     /// ```
-    pub async fn build_image(&self, source_path: &str) -> Result<DockerImageBuildResult, String> {
-        let container_guid = Uuid::new_v4().to_hyphenated().to_string();
+    pub async fn build_image(
+        &self,
+        source_path: &str,
+        id: Option<String>,
+    ) -> Result<DockerImageBuildResult, String> {
+        let container_guid = id.unwrap_or(Uuid::new_v4().to_hyphenated().to_string());
         // tar the directory
         let make_tar = || -> Result<(), std::io::Error> {
             // Create directory tree if it doesn't exist
@@ -156,7 +160,7 @@ impl DockerBroker {
         match make_tar() {
             Ok(_) => {
                 info!("Tar for {} completed succesfully", source_path);
-                let mut log = vec![];
+                let mut log: Vec<String> = vec![];
                 let build_result: Result<(), String> = async {
                     let mut file =
                         File::open(format!("./tmp/containers/{}.tar.gz", &container_guid))
@@ -189,13 +193,16 @@ impl DockerBroker {
                                     progress_detail,
                                 } => {
                                     info!(
-                                        "{:?}\n{:?}\n{:?}\n{:?}\n{:?}\n",
+                                        "{:?},{:?},{:?},{:?},{:?}",
                                         id, error, status, progress, progress_detail
                                     );
                                     // TODO fix
-                                    let data = str::replace(&id.unwrap(), "\n", "");
+                                    // Why was I doing this?
+                                    // let data = str::replace(&id.unwrap(), "\n", "");
+                                    //let data = format!("{:?}", id);
+                                    let data = "";
                                     if data.len() > 0 {
-                                        log.push(data);
+                                        log.push(data.to_owned());
                                     }
                                 }
                                 _ => {
