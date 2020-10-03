@@ -1,15 +1,15 @@
 use crate::{
-    db::{Database, ManagedDatabase},
-    schema::Query,
+    db::ManagedDatabase,
+    schema::{Mutation, Query},
 }; // Include module from the crate
 
-use juniper::{EmptyMutation, RootNode};
+use juniper::RootNode;
 use rocket::{response::content, response::NamedFile, State};
 use std::path::PathBuf;
 
 // declare the schema, will need to dig into this more
 // Presumably this would use not an Empty Mutation in the future
-pub type Schema = RootNode<'static, Query, EmptyMutation<Database>>;
+pub type Schema = RootNode<'static, Query, Mutation>;
 
 // ROCKET ROUTES
 
@@ -36,8 +36,7 @@ pub fn get_graphql_handler(
     request: juniper_rocket::GraphQLRequest,
     schema: State<Schema>,
 ) -> juniper_rocket::GraphQLResponse {
-    let ctx = context.db.lock().unwrap();
-    request.execute(&schema, &ctx)
+    request.execute(&schema, &context)
 }
 
 #[rocket::post("/graphql", data = "<request>")]
@@ -46,8 +45,8 @@ pub fn post_graphql_handler(
     request: juniper_rocket::GraphQLRequest,
     schema: State<Schema>,
 ) -> juniper_rocket::GraphQLResponse {
-    let ctx = context.db.lock().unwrap();
-    request.execute(&schema, &ctx)
+    //let mut ctx = context.db.lock().unwrap();
+    request.execute(&schema, &context)
 }
 
 #[rocket::get("/<path..>")]

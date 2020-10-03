@@ -1,3 +1,4 @@
+use log::info;
 use reqwest::header::{CONTENT_TYPE, USER_AGENT};
 use serde::Deserialize;
 
@@ -25,7 +26,7 @@ impl GitApi {
             repo = repo
         );
 
-        println!("Making request to: {}", url);
+        info!("Making request to: {}", url);
 
         let client = reqwest::Client::new();
 
@@ -40,12 +41,12 @@ impl GitApi {
             Ok(r) => match r.json().await {
                 Ok(data) => data,
                 Err(e) => {
-                    println!("Failed to parse JSON: {}", e);
+                    info!("Failed to parse JSON: {}", e);
                     None
                 }
             },
             Err(e) => {
-                println!("Error in reqwest to {}: {}", url, e);
+                info!("Error in reqwest to {}: {}", url, e);
                 None
             }
         }

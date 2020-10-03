@@ -34,8 +34,11 @@ impl DockerBroker {
         let conn = Docker::connect_with_unix_defaults();
         match conn {
             Ok(c) => {
-                let version = c.version().await;
-                info!("Docker {} connection established", version.unwrap().version);
+                let version = c.version().await.unwrap();
+                match version.version {
+                    Some(v) => info!("Docker {} connection established", v),
+                    None => info!("Docker [unspecified version] connection established"),
+                }
                 Some(DockerBroker { conn: c })
             }
             Err(e) => {
@@ -69,7 +72,7 @@ impl DockerBroker {
         let mut ids = vec![];
 
         for image in images {
-            println!("-> {:?}", image);
+            info!("-> {:?}", image);
             ids.push(image.id);
         }
         ids
@@ -137,8 +140,12 @@ impl DockerBroker {
     /// let docker = DockerBroker::new();
     /// docker.build_image("./tmp/test-proj"); // builds image 12345 and maps 9000->9000
     /// ```
-    pub async fn build_image(&self, source_path: &str) -> Result<DockerImageBuildResult, String> {
-        let container_guid = Uuid::new_v4().to_hyphenated().to_string();
+    pub async fn build_image(
+        &self,
+        source_path: &str,
+        id: Option<String>,
+    ) -> Result<DockerImageBuildResult, String> {
+        let container_guid = id.unwrap_or(Uuid::new_v4().to_hyphenated().to_string());
         // tar the directory
         let make_tar = || -> Result<(), std::io::Error> {
             // Create directory tree if it doesn't exist
@@ -153,7 +160,7 @@ impl DockerBroker {
         match make_tar() {
             Ok(_) => {
                 info!("Tar for {} completed succesfully", source_path);
-                let mut log = vec![];
+                let mut log: Vec<String> = vec![];
                 let build_result: Result<(), String> = async {
                     let mut file =
                         File::open(format!("./tmp/containers/{}.tar.gz", &container_guid))
@@ -178,16 +185,31 @@ impl DockerBroker {
                     while let Some(result) = build_results.next().await {
                         if let Ok(stage) = result {
                             match stage {
-                                bollard::image::BuildImageResults::BuildImageStream { stream } => {
-                                    let data = str::replace(&stream, "\n", "");
+                                bollard::service::CreateImageInfo {
+                                    id,
+                                    error,
+                                    status,
+                                    progress,
+                                    progress_detail,
+                                } => {
+                                    info!(
+                                        "{:?},{:?},{:?},{:?},{:?}",
+                                        id, error, status, progress, progress_detail
+                                    );
+                                    // TODO fix
+                                    // Why was I doing this?
+                                    // let data = str::replace(&id.unwrap(), "\n", "");
+                                    //let data = format!("{:?}", id);
+                                    let data = "";
                                     if data.len() > 0 {
-                                        log.push(data);
+                                        log.push(data.to_owned());
                                     }
-                                }
-                                _ => {
-                                    // TODO figure out what to do with other results
-                                    // BuildImageAux is called right before the final Stream message
-                                }
+                                } /*
+                                  _ => {
+                                      // TODO figure out what to do with other results
+                                      // BuildImageAux is called right before the final Stream message
+                                  }
+                                  */
                             }
                         } else {
                             // TODO figure out what to do with Err
@@ -215,6 +237,7 @@ impl DockerBroker {
     }
 
     /// Builds a docker image from a local project folder
+    /// TODO remove this options? not sure
     ///
     /// This will create a `/tmp/containers` directory if it doesn't exist to store a tar of the project before building the image.
     /// # Arguments
@@ -227,13 +250,10 @@ impl DockerBroker {
     /// let docker = DockerBroker::new();
     /// docker.build_image("./tmp/test-proj"); // builds image 12345 and maps 9000->9000
     /// ```
-    pub async fn create_(
-        &self,
-        image_name: &str,
-    ) -> Result<DockerImageBuildResult, String> {
+    pub async fn create_by_cli(&self, _image_name: &str) -> Result<DockerImageBuildResult, String> {
         let container_guid = Uuid::new_v4().to_hyphenated().to_string();
         // tar the directory
-        let res = Command::new("docker")
+        let _res = Command::new("docker")
             .arg("run")
             .arg("-d")
             .arg("-t")
@@ -293,14 +313,14 @@ impl DockerBroker {
             ..Default::default()
         };
 
-        println!("{:?}", config);
+        info!("{:?}", config);
 
         let res = self
             .conn
             .create_container(Some(CreateContainerOptions { name: image_id }), config)
             .await;
 
-        println!("{:?}", res);
+        info!("{:?}", res);
 
         if let Ok(response) = res {
             info!("Docker built container {}", response.id);
@@ -362,7 +382,7 @@ impl DockerBroker {
         info!(
             "Docker prune removed {} images, reclaimed {} bytes",
             out.images_deleted.unwrap_or(vec![]).len(), // TODO verify if this is actually correct
-            out.space_reclaimed
+            out.space_reclaimed.unwrap_or(0)
         );
     }
 

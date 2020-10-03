@@ -1,10 +1,7 @@
 pub mod orchestrator;
 pub mod worker;
 
-use crate::rabbit::{
-    deployment_message::DeploymentMessage, sysinfo_message::SysinfoMessage, QueueLabel,
-    RabbitBroker, RabbitMessage,
-};
+use crate::rabbit::{sysinfo_message::SysinfoMessage, QueueLabel, RabbitBroker, RabbitMessage};
 use async_trait::async_trait;
 use sysinfo::SystemExt;
 

@@ -30,7 +30,7 @@ pub fn load_or_create_platform(db: &mut Database) -> Platform {
                 OrchestratorInterface::new(
                     Some(String::from("https://github.com/ethanshry/Kraken-UI.git")),
                     None,
-                    ApplicationStatus::ERRORED,
+                    ApplicationStatus::Errored,
                 )
                 .to_owned(),
             ),

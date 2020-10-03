@@ -1,3 +1,4 @@
+use log::info;
 use std::fs;
 
 /// Copies a directory's contents to crate/static/
@@ -49,7 +50,7 @@ pub fn copy_dockerfile_to_dir(dockerfile_ref: &str, file_path: &str) -> bool {
     ) {
         Ok(_) => true,
         Err(e) => {
-            println!(
+            info!(
                 "There was an error copying the dockerfile {} to {}: {}",
                 dockerfile_ref, file_path, e
             );

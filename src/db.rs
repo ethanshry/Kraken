@@ -1,6 +1,7 @@
 use crate::model::{
     ApplicationStatus, Deployment, Node, Orchestrator, OrchestratorInterface, Service,
 };
+use log::{info, warn};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
@@ -17,9 +18,13 @@ impl ManagedDatabase {
 
 /// The database contains information about the currently running platform.
 /// This is managed on the orchestration nodes only
+/// The processes which need access to the database will contain an Arc to a Mutex for the Database
 pub struct Database {
+    /// Information about the deployments the orchestrator is managing
     deployments: HashMap<String, Deployment>,
+    /// Information about the nodes the orchestrator is managing
     nodes: HashMap<String, Node>,
+    /// Information about the platform
     orchestrator: Orchestrator,
 }
 
@@ -44,7 +49,7 @@ impl Database {
         let orchestrator = Orchestrator::new(OrchestratorInterface::new(
             None,
             None,
-            ApplicationStatus::ERRORED,
+            ApplicationStatus::Errored,
         ));
 
         Database {
@@ -77,12 +82,14 @@ impl Database {
         Ok(0)
     }
 
-    pub fn get_node(&self, node_id: &str) -> Option<&Node> {
-        self.nodes.get(node_id)
+    pub fn get_node(&self, node_id: &str) -> Option<Node> {
+        match self.nodes.get(node_id) {
+            Some(n) => Some(n.clone()),
+            None => None,
+        }
     }
 
     pub fn insert_node(&mut self, node: &Node) -> Option<Node> {
-        println!("inserting {}", node.id);
         self.nodes.insert(node.id.to_owned(), node.to_owned())
     }
 
@@ -99,14 +106,32 @@ impl Database {
         }
     }
 
-    pub fn get_deployment(&self, deployment_id: &str) -> Option<&Deployment> {
-        self.deployments.get(deployment_id)
+    pub fn get_deployment(&self, deployment_id: &str) -> Option<Deployment> {
+        match self.deployments.get(deployment_id) {
+            Some(d) => Some(d.clone()),
+            None => None,
+        }
     }
 
     pub fn insert_deployment(&mut self, deployment: &Deployment) -> Option<Deployment> {
-        println!("inserting {}", deployment.id);
         self.deployments
             .insert(deployment.id.to_owned(), deployment.to_owned())
+    }
+
+    pub fn update_deployment(
+        &mut self,
+        deployment_id: &str,
+        deployment: &Deployment,
+    ) -> Option<Deployment> {
+        info!("updating {}", deployment.id);
+        if !self.deployments.contains_key(deployment_id) {
+            warn!(
+                "Deployment id: {} does not exist, inserting new deployment instead",
+                deployment.id
+            );
+        }
+        self.deployments
+            .insert(deployment_id.to_owned(), deployment.to_owned())
     }
 
     pub fn get_deployments(&self) -> Option<Vec<Deployment>> {

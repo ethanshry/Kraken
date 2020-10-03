@@ -1,15 +1,16 @@
-use crate::db::Database;
+use crate::db::{Database, ManagedDatabase};
 use crate::model::{
-    ApplicationInstance, ApplicationStatus, Deployment, Node, Orchestrator,
-    Platform, Service,
+    ApplicationInstance, ApplicationStatus, Deployment, Node, Orchestrator, Platform, Service,
 };
 use juniper::{FieldError, FieldResult};
+use uuid::Uuid;
 
 impl juniper::Context for Database {}
+impl juniper::Context for ManagedDatabase {}
 
 // Specify computed resolvers for GQL type
 // Note only visible resolvers can be here, other properties must be in a different impl block
-#[juniper::object(context = Database)]
+#[juniper::object(context = ManagedDatabase)]
 #[graphql(description = "A physical devide which is a member of the platform")]
 impl Node {
     fn id(&self) -> &str {
@@ -53,7 +54,7 @@ impl Node {
     */
 }
 
-#[juniper::object(context = Database)]
+#[juniper::object(context = ManagedDatabase)]
 #[graphql(description = "A physical devide which is a member of the platform")]
 impl Deployment {
     fn id(&self) -> &str {
@@ -89,7 +90,7 @@ impl Deployment {
     }
 }
 
-#[juniper::object(context = Database)]
+#[juniper::object(context = ManagedDatabase)]
 #[graphql(description = "A physical devide which is a member of the platform")]
 impl Platform {
     fn deployments(&self) -> Vec<Deployment> {
@@ -107,58 +108,92 @@ impl Platform {
 
 pub struct Query;
 
-#[juniper::object(Context = Database)]
+#[juniper::object(Context = ManagedDatabase)]
 impl Query {
     /// Get information for a specific deployment on the platform
     fn get_deployment(
-        context: &Database,
+        context: &ManagedDatabase,
         deployment_id: String,
-    ) -> FieldResult<Option<&Deployment>> {
-        let res = context.get_deployment(&deployment_id);
-        // Return the result.
-        Ok(res)
+    ) -> FieldResult<Option<Deployment>> {
+        let db = context.db.lock().unwrap();
+        Ok(db.get_deployment(&deployment_id))
     }
 
     /// Get a list of all deployments running on the platform
-    fn get_deployments(context: &Database) -> FieldResult<Option<Vec<Deployment>>> {
-        let res = context.get_deployments();
-        // Return the result.
-        Ok(res)
+    fn get_deployments(context: &ManagedDatabase) -> FieldResult<Option<Vec<Deployment>>> {
+        Ok(context.db.lock().unwrap().get_deployments())
     }
 
     /// Get a list of all services the orchestrator is providing to the platform
-    fn get_platform_services(context: &Database) -> FieldResult<Option<Vec<Service>>> {
-        let res = context.get_platform_services();
-        // Return the result.
-        Ok(res)
+    fn get_platform_services(context: &ManagedDatabase) -> FieldResult<Option<Vec<Service>>> {
+        Ok(context.db.lock().unwrap().get_platform_services())
     }
 
     /// Get information for a specific node on the platform
-    fn get_node(context: &Database, node_id: String) -> FieldResult<Option<&Node>> {
+    fn get_node(context: &ManagedDatabase, node_id: String) -> FieldResult<Option<Node>> {
         //let res = context.db.lock().unwrap().get_node(&node_id);
-        let res = context.get_node(&node_id);
-        // Return the result.
-        Ok(res)
+        Ok(context.db.lock().unwrap().get_node(&node_id))
     }
 
     /// Get a list of all nodes currently attached to the platform
-    fn get_nodes(context: &Database) -> FieldResult<Option<Vec<Node>>> {
+    fn get_nodes(context: &ManagedDatabase) -> FieldResult<Option<Vec<Node>>> {
         //let res = context.db.lock().unwrap().get_node(&node_id);
-        let res = context.get_nodes();
+        let res = context.db.lock().unwrap().get_nodes();
         // Return the result.
         Ok(res)
     }
 
-    fn get_platform(context: &Database) -> FieldResult<Platform> {
-        match (context.get_deployments(), context.get_nodes()) {
-            (Some(deployments), Some(nodes)) => Ok(Platform::new(
-                &deployments,
-                &context.get_orchestrator(),
-                &nodes,
-            )),
+    fn get_platform(context: &ManagedDatabase) -> FieldResult<Platform> {
+        let db = context.db.lock().unwrap();
+        match (db.get_deployments(), db.get_nodes()) {
+            (Some(deployments), Some(nodes)) => {
+                Ok(Platform::new(&deployments, &db.get_orchestrator(), &nodes))
+            }
             _ => Err(FieldError::new(
                 "No Platform Available",
                 juniper::graphql_value!({"internal_error": "no_platform_available"}),
+            )),
+        }
+    }
+
+    //fn get_platform(context: &Database) -> FieldResult<Option<Platform>> {
+    //}
+}
+
+pub struct Mutation;
+
+#[juniper::object(Context = ManagedDatabase)]
+impl Mutation {
+    fn create_deployment(context: &ManagedDatabase, deployment_url: String) -> FieldResult<String> {
+        let uuid = Uuid::new_v4().to_hyphenated().to_string();
+        context
+            .db
+            .lock()
+            .unwrap()
+            .insert_deployment(&Deployment::new(
+                &uuid,
+                &deployment_url,
+                "",
+                "",
+                ApplicationStatus::DeploymentRequested,
+                "",
+                "",
+                &vec![None],
+            ));
+        Ok(uuid)
+    }
+
+    fn cancel_deployment(context: &ManagedDatabase, deployment_id: String) -> FieldResult<bool> {
+        let mut db = context.db.lock().unwrap();
+        match db.get_deployment(&deployment_id) {
+            Some(mut d) => {
+                d.status = ApplicationStatus::DestructionRequested;
+                db.update_deployment(&deployment_id, &d);
+                Ok(true)
+            }
+            None => Err(FieldError::new(
+                "No Active Deployment with the specified id",
+                juniper::graphql_value!({"internal_error": "no_deployment_id"}),
             )),
         }
     }
