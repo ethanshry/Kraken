@@ -10,7 +10,6 @@ use crate::rabbit::{
     QueueLabel, RabbitMessage,
 };
 use crate::schema::{Mutation, Query};
-use juniper::EmptyMutation;
 use log::{info, warn};
 use std::fs;
 use std::process::Command;

@@ -204,11 +204,12 @@ impl DockerBroker {
                                     if data.len() > 0 {
                                         log.push(data.to_owned());
                                     }
-                                }
-                                _ => {
-                                    // TODO figure out what to do with other results
-                                    // BuildImageAux is called right before the final Stream message
-                                }
+                                } /*
+                                  _ => {
+                                      // TODO figure out what to do with other results
+                                      // BuildImageAux is called right before the final Stream message
+                                  }
+                                  */
                             }
                         } else {
                             // TODO figure out what to do with Err

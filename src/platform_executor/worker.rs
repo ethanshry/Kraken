@@ -5,14 +5,12 @@ use crate::model::ApplicationStatus;
 use crate::platform_executor::{GenericNode, SetupFaliure, Task, TaskFaliure};
 use crate::rabbit::{
     deployment_message::DeploymentMessage,
-    sysinfo_message::SysinfoMessage,
     work_request_message::{WorkRequestMessage, WorkRequestType},
     QueueLabel, RabbitBroker, RabbitMessage,
 };
 use log::{error, info, warn};
 use queues::{IsQueue, Queue};
 use std::sync::{Arc, Mutex};
-use uuid::Uuid;
 
 pub struct Worker {
     work_requests: Arc<Mutex<Queue<WorkRequestMessage>>>,
@@ -65,7 +63,7 @@ pub async fn setup(node: &mut GenericNode, w: &mut Worker) -> Result<(), SetupFa
 
         let handler = move |data: Vec<u8>| {
             let mut work_queue = arc.lock().unwrap();
-            let (node, message) = WorkRequestMessage::deconstruct_message(&data);
+            let (_node, message) = WorkRequestMessage::deconstruct_message(&data);
             info!("Recieved Message on {}'s Work Queue", &system_uuid);
             work_queue.add(message).unwrap();
             return ();

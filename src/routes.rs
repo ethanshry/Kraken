@@ -1,9 +1,9 @@
 use crate::{
-    db::{Database, ManagedDatabase},
+    db::ManagedDatabase,
     schema::{Mutation, Query},
 }; // Include module from the crate
 
-use juniper::{EmptyMutation, RootNode};
+use juniper::RootNode;
 use rocket::{response::content, response::NamedFile, State};
 use std::path::PathBuf;
 

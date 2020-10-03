@@ -18,9 +18,13 @@ impl ManagedDatabase {
 
 /// The database contains information about the currently running platform.
 /// This is managed on the orchestration nodes only
+/// The processes which need access to the database will contain an Arc to a Mutex for the Database
 pub struct Database {
+    /// Information about the deployments the orchestrator is managing
     deployments: HashMap<String, Deployment>,
+    /// Information about the nodes the orchestrator is managing
     nodes: HashMap<String, Node>,
+    /// Information about the platform
     orchestrator: Orchestrator,
 }
 
@@ -86,7 +90,6 @@ impl Database {
     }
 
     pub fn insert_node(&mut self, node: &Node) -> Option<Node> {
-        //info!("inserting {}", node.id);
         self.nodes.insert(node.id.to_owned(), node.to_owned())
     }
 
@@ -111,7 +114,6 @@ impl Database {
     }
 
     pub fn insert_deployment(&mut self, deployment: &Deployment) -> Option<Deployment> {
-        //info!("inserting {}", deployment.id);
         self.deployments
             .insert(deployment.id.to_owned(), deployment.to_owned())
     }
