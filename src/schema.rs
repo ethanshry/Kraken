@@ -85,8 +85,8 @@ impl Deployment {
         self.deployment_url.as_str()
     }
 
-    fn instances(&self) -> Vec<Option<ApplicationInstance>> {
-        self.instances.clone()
+    fn node(&self) -> &str {
+        self.node.as_str()
     }
 }
 
@@ -178,7 +178,7 @@ impl Mutation {
                 ApplicationStatus::DeploymentRequested,
                 "",
                 "",
-                &vec![None],
+                "", //&vec![None],
             ));
         Ok(uuid)
     }

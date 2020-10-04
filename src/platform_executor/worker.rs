@@ -107,6 +107,15 @@ pub async fn execute(node: &GenericNode, w: &mut Worker) -> Result<(), TaskFaliu
                 .await
                 .unwrap();
             }
+            WorkRequestType::CancelDeployment => {
+                kill_deployment(
+                    &node.system_id,
+                    node.broker.as_ref().unwrap(),
+                    &task.deployment_id.unwrap(),
+                )
+                .await
+                .unwrap();
+            }
             _ => info!("Request type not handled"),
         }
     }
@@ -202,4 +211,24 @@ pub async fn handle_deployment(
     }
 
     Ok(())
+}
+
+pub async fn kill_deployment(system_id: &str, broker: &RabbitBroker, id: &str) -> Result<(), ()> {
+    let container_guid = id.clone();
+
+    let publisher = broker.get_channel().await;
+
+    let mut msg = DeploymentMessage::new(&system_id, &container_guid);
+    msg.update_message(ApplicationStatus::DestructionInProgress, "");
+    msg.send(&publisher, QueueLabel::Deployment.as_str()).await;
+
+    let docker = DockerBroker::new().await;
+    if let Some(docker) = docker {
+        docker.stop_container(&container_guid).await;
+        docker.prune_images(Some("1s")).await;
+        msg.update_message(ApplicationStatus::Destroyed, "");
+        msg.send(&publisher, QueueLabel::Deployment.as_str()).await;
+        return Ok(());
+    }
+    Err(())
 }

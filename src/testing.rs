@@ -21,4 +21,14 @@ pub async fn setup_experiment(_node: &mut GenericNode, _o: &mut Orchestrator) {
         ));
         */
     }();
+    /*
+    let out =
+        crate::gitapi::GitApi::get_tail_commits_for_repo_branches("ethanshry", "scapegoat").await;
+    println!("{:?}", out);
+
+    let out =
+        crate::gitapi::GitApi::check_for_file_in_repo("ethanshry", "scapegoat", "shipwreck.toml")
+            .await;
+    println!("{:?}", out);
+    */
 }

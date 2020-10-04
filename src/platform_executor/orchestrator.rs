@@ -134,6 +134,45 @@ pub fn deploy_rabbit_instance(node: &GenericNode, o: &Orchestrator) -> Result<()
     }
 }
 
+/// Ensures the deployment has the potential for success
+/// This includes ensuring the url is valid and the shipwreck.toml exists in the repo
+pub async fn validate_deployment(git_url: &str) -> Result<String, ()> {
+    // https://github.com/ethanshry/scapegoat
+    match crate::gitapi::GitApi::parse_git_url(git_url) {
+        None => Err(()),
+        Some(url_data) => {
+            match crate::gitapi::GitApi::check_for_file_in_repo(
+                &url_data.user,
+                &url_data.repo,
+                "shipwreck.toml",
+            )
+            .await
+            {
+                Some(_) => {
+                    let commits = crate::gitapi::GitApi::get_tail_commits_for_repo_branches(
+                        &url_data.user,
+                        &url_data.repo,
+                    )
+                    .await;
+                    match commits {
+                        None => Err(()),
+                        Some(commits) => {
+                            for c in commits {
+                                // TODO fix so any branch is accepted
+                                if c.name == "master" {
+                                    return Ok(c.commit.sha.to_string());
+                                }
+                            }
+                            Err(())
+                        }
+                    }
+                }
+                None => Err(()),
+            }
+        }
+    }
+}
+
 impl Orchestrator {
     /// Creates a new Orchestrator Object
     pub fn new() -> Orchestrator {
@@ -328,46 +367,128 @@ pub async fn execute(node: &GenericNode, o: &Orchestrator) -> Result<(), TaskFal
         drop(db);
         if let Some(d) = deployments {
             for mut deployment in d {
-                if deployment.status == ApplicationStatus::DeploymentRequested {
-                    // TODO Validate deployment here?
-                    // Look for free nodes to distribute tasks to
-                    deployment.status = ApplicationStatus::ValidatingDeploymentData;
-                    let mut db = arc.lock().unwrap();
-                    db.update_deployment(&deployment.id, &deployment);
-                    let nodes = db.get_nodes();
-                    info!("{:?}", nodes);
-                    match nodes {
-                        None => {
-                            deployment.status = ApplicationStatus::Errored;
-                            db.update_deployment(&deployment.id, &deployment);
-                        }
-                        Some(nodes) => {
-                            let mut curr_node = &nodes[0];
-                            for node in nodes.iter() {
-                                // For now, pick the node with the fewest application instances
-                                // TODO make this process smart
-                                if node.application_instances.len()
-                                    < curr_node.application_instances.len()
-                                {
-                                    curr_node = node;
+                match deployment.status {
+                    ApplicationStatus::DeploymentRequested => {
+                        // Look for free nodes to distribute tasks to
+                        deployment.status = ApplicationStatus::ValidatingDeploymentData;
+                        let mut db = arc.lock().unwrap();
+                        db.update_deployment(&deployment.id, &deployment);
+                        drop(db);
+
+                        match validate_deployment(&deployment.src_url).await {
+                            Err(_) => {
+                                warn!("Deployment failed validation {}", &deployment.id);
+                                let mut db = arc.lock().unwrap();
+                                deployment.status = ApplicationStatus::Errored;
+                                db.update_deployment(&deployment.id, &deployment);
+                                drop(db);
+                            }
+                            Ok(commit) => {
+                                let mut db = arc.lock().unwrap();
+                                deployment.status = ApplicationStatus::DelegatingDeployment;
+                                deployment.commit = commit;
+                                db.update_deployment(&deployment.id, &deployment);
+                                let nodes = db.get_nodes();
+                                info!("{:?}", nodes);
+                                match nodes {
+                                    None => {
+                                        warn!(
+                                            "No node available to accept deployment {}",
+                                            &deployment.id
+                                        );
+                                        deployment.status = ApplicationStatus::Errored;
+                                        db.update_deployment(&deployment.id, &deployment);
+                                    }
+                                    Some(nodes) => {
+                                        let mut curr_node = &nodes[0];
+                                        for node in nodes.iter() {
+                                            // For now, pick the node with the fewest application instances
+                                            // TODO make this process smart
+                                            if node.application_instances.len()
+                                                < curr_node.application_instances.len()
+                                            {
+                                                curr_node = node;
+                                            }
+                                        }
+
+                                        deployment.node = curr_node.id.clone();
+                                        deployment.status = ApplicationStatus::Errored;
+                                        db.update_deployment(&deployment.id, &deployment);
+
+                                        // curr_node will recieve the work
+
+                                        // Send work to curr_node
+                                        let msg = WorkRequestMessage::new(
+                                            WorkRequestType::RequestDeployment,
+                                            Some(&deployment.id),
+                                            Some(&deployment.src_url),
+                                            None,
+                                        );
+                                        let publisher =
+                                            node.broker.as_ref().unwrap().get_channel().await;
+                                        msg.send(&publisher, &node.system_id).await;
+
+                                        // Deployment has been scheduled
+                                    }
                                 }
                             }
-
-                            // curr_node will recieve the work
-
-                            // Send work to curr_node
-                            let msg = WorkRequestMessage::new(
-                                WorkRequestType::RequestDeployment,
-                                Some(&deployment.id),
-                                Some(&deployment.src_url),
-                                None,
-                            );
-                            let publisher = node.broker.as_ref().unwrap().get_channel().await;
-                            msg.send(&publisher, &node.system_id).await;
-
-                            // Deployment has been scheduled
                         }
                     }
+                    ApplicationStatus::Running | ApplicationStatus::Errored => {
+                        // Check for update and re-deploy
+                        let commit = crate::gitapi::GitApi::get_tail_commit_for_branch_from_url(
+                            "master",
+                            &deployment.src_url,
+                        )
+                        .await;
+                        match commit {
+                            None => {}
+                            Some(c) => {
+                                if c != deployment.commit {
+                                    // Need to redeploy
+                                    info!(
+                                        "Update on remote for deployment {} detected, redeploying",
+                                        &deployment.id
+                                    );
+                                    let mut db = arc.lock().unwrap();
+                                    deployment.status = ApplicationStatus::DelegatingDestruction;
+                                    db.update_deployment(&deployment.id, &deployment);
+                                    drop(db);
+                                    let msg = WorkRequestMessage::new(
+                                        WorkRequestType::CancelDeployment,
+                                        Some(&deployment.id),
+                                        None,
+                                        None,
+                                    );
+                                    let publisher =
+                                        node.broker.as_ref().unwrap().get_channel().await;
+                                    msg.send(&publisher, &deployment.node).await;
+                                    let msg = WorkRequestMessage::new(
+                                        WorkRequestType::RequestDeployment,
+                                        Some(&deployment.id),
+                                        Some(&deployment.src_url),
+                                        None,
+                                    );
+                                    msg.send(&publisher, &deployment.node).await;
+                                }
+                            }
+                        }
+                    }
+                    ApplicationStatus::DestructionRequested => {
+                        let mut db = arc.lock().unwrap();
+                        deployment.status = ApplicationStatus::DelegatingDestruction;
+                        db.update_deployment(&deployment.id, &deployment);
+                        drop(db);
+                        let msg = WorkRequestMessage::new(
+                            WorkRequestType::CancelDeployment,
+                            Some(&deployment.id),
+                            None,
+                            None,
+                        );
+                        let publisher = node.broker.as_ref().unwrap().get_channel().await;
+                        msg.send(&publisher, &deployment.node).await;
+                    }
+                    _ => {}
                 }
             }
         }
