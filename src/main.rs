@@ -13,6 +13,7 @@ extern crate strum_macros;
 extern crate tokio;
 
 mod db;
+mod deployment;
 mod docker;
 mod file_utils;
 mod git_utils;

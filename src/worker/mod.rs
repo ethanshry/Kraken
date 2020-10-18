@@ -8,6 +8,7 @@ use crate::rabbit::{
 use log::{error, info};
 use uuid::Uuid;
 
+// TODO delete this? does anyone use it?
 pub async fn handle_deployment(
     system_id: &str,
     broker: &RabbitBroker,
@@ -34,7 +35,7 @@ pub async fn handle_deployment(
     msg.send(&publisher, QueueLabel::Deployment.as_str()).await;
 
     info!("Retrieving git repository for container from {}", git_uri);
-    clone_remote_branch(git_uri, "master", tmp_dir_path)
+    clone_remote_branch(git_uri, "main", tmp_dir_path)
         .wait()
         .unwrap();
 

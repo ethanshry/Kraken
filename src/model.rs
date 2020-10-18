@@ -205,6 +205,7 @@ pub enum ApplicationStatus {
     DelegatingDestruction,
     DestructionInProgress,
     Destroyed,
+    UpdateRequested,
 }
 
 #[derive(Serialize, Debug, Deserialize, Clone, juniper::GraphQLObject)]

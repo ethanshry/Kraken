@@ -104,8 +104,7 @@ pub async fn execute(node: &GenericNode, w: &mut Worker) -> Result<(), TaskFaliu
                     &task.deployment_url.unwrap(),
                     &task.deployment_id.unwrap(),
                 )
-                .await
-                .unwrap();
+                .await;
             }
             WorkRequestType::CancelDeployment => {
                 kill_deployment(
@@ -113,8 +112,7 @@ pub async fn execute(node: &GenericNode, w: &mut Worker) -> Result<(), TaskFaliu
                     node.broker.as_ref().unwrap(),
                     &task.deployment_id.unwrap(),
                 )
-                .await
-                .unwrap();
+                .await;
             }
             _ => info!("Request type not handled"),
         }
@@ -150,14 +148,44 @@ pub async fn handle_deployment(
     msg.send(&publisher, QueueLabel::Deployment.as_str()).await;
 
     info!("Retrieving git repository for container from {}", git_uri);
-    clone_remote_branch(git_uri, "master", tmp_dir_path)
+    clone_remote_branch(git_uri, "main", tmp_dir_path)
         .wait()
         .unwrap();
 
     // Inject the proper dockerfile into the project
     // TODO read configuration information from toml file
 
-    let dockerfile_name = "python36.dockerfile";
+    let deployment_config = match crate::deployment::config::get_config_for_path(&format!(
+        "{}/shipwreck.toml",
+        &tmp_dir_path
+    )) {
+        Some(c) => c,
+        None => {
+            msg.update_message(
+                ApplicationStatus::Errored,
+                &format!("shipwreck.toml not detected or incompatible format, please ensure your file is compliant"),
+            );
+            msg.send(&publisher, QueueLabel::Deployment.as_str()).await;
+            return Err(());
+        }
+    };
+
+    let port = deployment_config.config.port;
+
+    let dockerfile_name = match &deployment_config.config.lang[..] {
+        "python3" => "python36.dockerfile",
+        "node" => "node.dockerfile",
+        _ => {
+            msg.update_message(
+                ApplicationStatus::Errored,
+                &format!("shipwreck.toml specified an unsupported language. check the Kraken-UI for supported languages"),
+            );
+            msg.send(&publisher, QueueLabel::Deployment.as_str()).await;
+            return Err(());
+        }
+    };
+
+    //let dockerfile_name = "python36.dockerfile";
 
     copy_dockerfile_to_dir(dockerfile_name, tmp_dir_path);
 
@@ -191,7 +219,7 @@ pub async fn handle_deployment(
             msg.update_message(ApplicationStatus::Deploying, "");
             msg.send(&publisher, QueueLabel::Deployment.as_str()).await;
 
-            let ids = docker.start_container(&r.image_id, 9000).await;
+            let ids = docker.start_container(&r.image_id, port).await;
 
             if let Ok(id) = ids {
                 info!("Docker container started for {} with id {}", git_uri, id);
@@ -226,6 +254,7 @@ pub async fn kill_deployment(system_id: &str, broker: &RabbitBroker, id: &str) -
     if let Some(docker) = docker {
         docker.stop_container(&container_guid).await;
         docker.prune_images(Some("1s")).await;
+        docker.prune_containers(Some("1s")).await;
         msg.update_message(ApplicationStatus::Destroyed, "");
         msg.send(&publisher, QueueLabel::Deployment.as_str()).await;
         return Ok(());
