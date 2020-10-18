@@ -202,7 +202,10 @@ pub enum ApplicationStatus {
     Running,
     Errored,
     DestructionRequested,
+    DelegatingDestruction,
     DestructionInProgress,
+    Destroyed,
+    UpdateRequested,
 }
 
 #[derive(Serialize, Debug, Deserialize, Clone, juniper::GraphQLObject)]
@@ -263,7 +266,7 @@ pub struct Deployment {
     pub status: ApplicationStatus,
     pub results_url: String,
     pub deployment_url: String,
-    pub instances: Vec<Option<ApplicationInstance>>,
+    pub node: String, //Vec<Option<ApplicationInstance>>,
 }
 
 impl Deployment {
@@ -275,7 +278,7 @@ impl Deployment {
         status: ApplicationStatus,
         results_url: &str,
         deployment_url: &str,
-        instances: &Vec<Option<ApplicationInstance>>,
+        node: &str, //&Vec<Option<ApplicationInstance>>,
     ) -> Deployment {
         Deployment {
             id: id.to_owned(),
@@ -285,7 +288,7 @@ impl Deployment {
             status,
             results_url: results_url.to_owned(),
             deployment_url: deployment_url.to_owned(),
-            instances: instances.to_owned(),
+            node: node.to_owned(), //instances.to_owned(),
         }
     }
 
@@ -294,9 +297,11 @@ impl Deployment {
     }
 
     // TODO modify to update_instance
+    /*
     pub fn add_instance(&mut self, instance: ApplicationInstance) {
         self.instances.push(Some(instance));
     }
+    */
 
     pub fn remove_instance(&mut self, _instance_id: &str) {
         // TODO complete
@@ -313,11 +318,13 @@ impl Clone for Deployment {
             status: self.status.clone(),
             results_url: self.results_url.clone(),
             deployment_url: self.deployment_url.clone(),
-            instances: vec![],
+            node: self.node.clone(),
         };
-        for i in self.instances.iter() {
-            d.instances.push(i.clone());
+        /*
+        for i in self.node.iter() {
+            d.node.push(i.clone());
         }
+        */
 
         d
     }

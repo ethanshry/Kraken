@@ -8,6 +8,7 @@ edition = "2018"
 
 [dependencies]
 async-trait = "0.1"
+base64 = "0.13.0"
 bollard = "0.8"
 dotenv = "0.15.0"
 env_logger = "0.7"

@@ -85,8 +85,8 @@ impl Deployment {
         self.deployment_url.as_str()
     }
 
-    fn instances(&self) -> Vec<Option<ApplicationInstance>> {
-        self.instances.clone()
+    fn node(&self) -> &str {
+        self.node.as_str()
     }
 }
 
@@ -178,9 +178,24 @@ impl Mutation {
                 ApplicationStatus::DeploymentRequested,
                 "",
                 "",
-                &vec![None],
+                "", //&vec![None],
             ));
         Ok(uuid)
+    }
+
+    fn poll_redeploy(context: &ManagedDatabase, deployment_id: String) -> FieldResult<bool> {
+        let mut db = context.db.lock().unwrap();
+        match db.get_deployment(&deployment_id) {
+            Some(mut d) => {
+                d.status = ApplicationStatus::UpdateRequested;
+                db.update_deployment(&deployment_id, &d);
+                Ok(true)
+            }
+            None => Err(FieldError::new(
+                "No Active Deployment with the specified id",
+                juniper::graphql_value!({"internal_error": "no_deployment_id"}),
+            )),
+        }
     }
 
     fn cancel_deployment(context: &ManagedDatabase, deployment_id: String) -> FieldResult<bool> {
