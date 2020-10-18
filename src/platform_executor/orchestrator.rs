@@ -435,48 +435,6 @@ pub async fn execute(node: &GenericNode, o: &Orchestrator) -> Result<(), TaskFal
                             }
                         }
                     }
-                    ApplicationStatus::Running | ApplicationStatus::Errored => {
-                        // Check for update and re-deploy
-                        /*
-                        let commit = crate::gitapi::GitApi::get_tail_commit_for_branch_from_url(
-                            "master",
-                            &deployment.src_url,
-                        )
-                        .await;
-                        match commit {
-                            None => {}
-                            Some(c) => {
-                                if c != deployment.commit {
-                                    // Need to redeploy
-                                    info!(
-                                        "Update on remote for deployment {} detected, redeploying",
-                                        &deployment.id
-                                    );
-                                    let mut db = arc.lock().unwrap();
-                                    deployment.status = ApplicationStatus::DelegatingDestruction;
-                                    db.update_deployment(&deployment.id, &deployment);
-                                    drop(db);
-                                    let msg = WorkRequestMessage::new(
-                                        WorkRequestType::CancelDeployment,
-                                        Some(&deployment.id),
-                                        None,
-                                        None,
-                                    );
-                                    let publisher =
-                                        node.broker.as_ref().unwrap().get_channel().await;
-                                    msg.send(&publisher, &deployment.node).await;
-                                    let msg = WorkRequestMessage::new(
-                                        WorkRequestType::RequestDeployment,
-                                        Some(&deployment.id),
-                                        Some(&deployment.src_url),
-                                        None,
-                                    );
-                                    msg.send(&publisher, &deployment.node).await;
-                                }
-                            }
-                        }
-                        */
-                    }
                     ApplicationStatus::UpdateRequested => {
                         let commit = crate::gitapi::GitApi::get_tail_commit_for_branch_from_url(
                             "main",

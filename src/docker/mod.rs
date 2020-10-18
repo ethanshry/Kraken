@@ -176,7 +176,7 @@ impl DockerBroker {
                             dockerfile: "Dockerfile",
                             t: &container_guid,
                             rm: true,
-                            networkmode: "bridge",
+                            networkmode: "bridge", // TODO probably doesn't work right now
                             ..Default::default()
                         },
                         None,
@@ -303,14 +303,14 @@ impl DockerBroker {
         );
 
         let config = Config {
-            hostname: Some("example-service.dev"),
+            hostname: Some("example-service.dev"), // TODO probably doesn't work right now
             image: Some(image_id),
             attach_stdout: Some(true),
             attach_stderr: Some(true),
             exposed_ports: Some(ports),
             host_config: Some(HostConfig {
                 port_bindings: Some(port_bindings),
-                network_mode: Some(String::from("bridge")),
+                network_mode: Some(String::from("bridge")), // TODO probably doesn't work right now
                 ..Default::default()
             }),
             ..Default::default()
@@ -405,7 +405,6 @@ impl DockerBroker {
     pub async fn prune_containers(&self, keep_if_created_before_time: Option<&str>) -> () {
         let mut filters = HashMap::new();
         filters.insert("until", vec![keep_if_created_before_time.unwrap_or("1h")]); // keep images created < until ago
-                                                                                    //filters.insert("dangling", vec!["false"]); // remove all images that are not running
 
         let out = self
             .conn
