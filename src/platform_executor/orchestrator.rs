@@ -23,6 +23,7 @@ pub struct Orchestrator {
 
 // TODO add broker to utils
 
+/// Spins up a Rocket API Server for the orchestration node
 pub fn create_api_server(o: &Orchestrator) -> tokio::task::JoinHandle<()> {
     let options = rocket_cors::CorsOptions {
         ..Default::default()
@@ -54,6 +55,7 @@ pub fn create_api_server(o: &Orchestrator) -> tokio::task::JoinHandle<()> {
     server
 }
 
+/// Pulls the Kraken-UI to be served by the API Server
 async fn fetch_ui(o: &Orchestrator) -> () {
     let git_data =
         crate::gitapi::GitApi::get_tail_commits_for_repo_branches("ethanshry", "kraken-ui").await;
@@ -112,6 +114,7 @@ async fn fetch_ui(o: &Orchestrator) -> () {
     info!("Kraken-UI is now available at commit SHA: {}", sha);
 }
 
+// Deploys a new RabbitMQ instance to the local machine
 pub fn deploy_rabbit_instance(node: &GenericNode, o: &Orchestrator) -> Result<(), String> {
     match Command::new("make").arg("spinup-rabbit").output() {
         Ok(_) => {
@@ -203,6 +206,10 @@ pub async fn setup(node: &mut GenericNode, o: &mut Orchestrator) -> Result<(), S
         0.0,
     ));
     drop(db);
+
+    fs::create_dir("~/.kraken");
+
+    fs::create_dir("~/.kraken/log");
 
     // clear all tmp files
     clear_tmp();
@@ -498,10 +505,6 @@ pub async fn execute(node: &GenericNode, o: &Orchestrator) -> Result<(), TaskFal
                 }
             }
         }
-
-        // TODO look for deployments which need to be updated
-
-        // TODO look for deployments which need to be cancelled
     }()
     .await;
     Ok(())

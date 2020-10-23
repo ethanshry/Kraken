@@ -31,6 +31,9 @@ impl WorkRequestType {
 }
 
 #[derive(Clone, Debug)]
+/// Message Type used when the Orchestrator is requesting work from a node
+/// This message has multiple formats, which are represented by the request_type
+/// This request_type is then used to encode and decode the rest of the rabbitmq message
 pub struct WorkRequestMessage {
     pub request_type: WorkRequestType,
     pub deployment_id: Option<String>, // Only set with WorkRequestType::{RequestDeployment, CancelDeployment}
@@ -61,6 +64,7 @@ impl WorkRequestMessage {
 }
 
 // TODO figure out how to better represent message types for the Work Queues
+// Maybe I should be serializing and deserializing the structs directly?
 impl RabbitMessage<WorkRequestMessage> for WorkRequestMessage {
     fn build_message(&self) -> Vec<u8> {
         match self.request_type {

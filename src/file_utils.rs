@@ -32,13 +32,12 @@ pub fn copy_dir_contents_to_static(dir: &str) -> () {
 
 /// Copies an individual file to the crate/static directory
 /// Leave file_path empty to coppy directly to the static directory
-pub fn copy_file_to_static(target_subdir: &str, file_path: &str) -> () {
+pub fn copy_file_to_static(target_subdir: &str, file_path: &str) -> Result<u64, std::io::Error> {
     let item_name = file_path.split("/").last().unwrap();
     match target_subdir {
         "" => fs::copy(file_path, format!("static/{}", item_name)),
         _ => fs::copy(file_path, format!("static/{}/{}", target_subdir, item_name)),
     }
-    .unwrap();
 }
 
 /// Searches for a dockerfile and copies it to the target file path
