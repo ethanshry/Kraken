@@ -310,7 +310,7 @@ impl Deployment {
 
 impl Clone for Deployment {
     fn clone(&self) -> Self {
-        let mut d = Deployment {
+        let d = Deployment {
             id: self.id.clone(),
             src_url: self.src_url.clone(),
             version: self.version.clone(),

@@ -1,5 +1,6 @@
-use log::info;
+use log::{info, warn};
 use std::fs;
+use std::io::prelude::*;
 
 /// Copies a directory's contents to crate/static/
 /// Will persist subdirectory structure
@@ -13,6 +14,7 @@ pub fn copy_dir_contents_to_static(dir: &str) -> () {
         if root != "" {
             fs::create_dir(format!("static/{}", root)).unwrap();
         }
+        info!("{} {}", root, dir);
         for item in fs::read_dir(dir).unwrap() {
             let path = &item.unwrap().path();
             if path.is_dir() {
@@ -32,13 +34,12 @@ pub fn copy_dir_contents_to_static(dir: &str) -> () {
 
 /// Copies an individual file to the crate/static directory
 /// Leave file_path empty to coppy directly to the static directory
-pub fn copy_file_to_static(target_subdir: &str, file_path: &str) -> () {
+pub fn copy_file_to_static(target_subdir: &str, file_path: &str) -> Result<u64, std::io::Error> {
     let item_name = file_path.split("/").last().unwrap();
     match target_subdir {
         "" => fs::copy(file_path, format!("static/{}", item_name)),
         _ => fs::copy(file_path, format!("static/{}/{}", target_subdir, item_name)),
     }
-    .unwrap();
 }
 
 /// Searches for a dockerfile and copies it to the target file path
@@ -66,5 +67,21 @@ pub fn clear_tmp() -> bool {
     match fs::remove_dir_all("tmp") {
         Ok(_) => true,
         Err(_) => false,
+    }
+}
+
+pub fn append_to_file(file_path: &str, data: &str) {
+    let file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(file_path);
+
+    match file {
+        Ok(mut f) => {
+            f.write_all(data.as_bytes());
+        }
+        Err(_) => {
+            warn!("Error opening file at {}", file_path);
+        }
     }
 }

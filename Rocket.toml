@@ -1,0 +1,7 @@
+[global]
+address = "localhost"
+port = 8000
+workers = 2
+log = "critical"
+
+# TODO figure out why this isn't working for log level

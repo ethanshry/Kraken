@@ -2,9 +2,10 @@ use crate::docker::DockerBroker;
 use crate::file_utils::{clear_tmp, copy_dockerfile_to_dir};
 use crate::git_utils::clone_remote_branch;
 use crate::model::ApplicationStatus;
-use crate::platform_executor::{GenericNode, SetupFaliure, Task, TaskFaliure};
+use crate::platform_executor::{DeploymentInfo, GenericNode, SetupFaliure, Task, TaskFaliure};
 use crate::rabbit::{
     deployment_message::DeploymentMessage,
+    log_message::LogMessage,
     work_request_message::{WorkRequestMessage, WorkRequestType},
     QueueLabel, RabbitBroker, RabbitMessage,
 };
@@ -87,7 +88,7 @@ pub async fn setup(node: &mut GenericNode, w: &mut Worker) -> Result<(), SetupFa
     Ok(())
 }
 
-pub async fn execute(node: &GenericNode, w: &mut Worker) -> Result<(), TaskFaliure> {
+pub async fn execute(node: &mut GenericNode, w: &mut Worker) -> Result<(), TaskFaliure> {
     // Each execution will perform a single task in the work queue.
     // If more work needs to be completed, execute should be called again
     let arc = w.work_requests.clone();
@@ -98,26 +99,75 @@ pub async fn execute(node: &GenericNode, w: &mut Worker) -> Result<(), TaskFaliu
 
         match task.request_type {
             WorkRequestType::RequestDeployment => {
-                handle_deployment(
+                let res = handle_deployment(
                     &node.system_id,
                     node.broker.as_ref().unwrap(),
                     &task.deployment_url.unwrap(),
                     &task.deployment_id.unwrap(),
                 )
                 .await;
+                if let Ok(r) = res {
+                    node.deployments.push_back(r);
+                }
             }
             WorkRequestType::CancelDeployment => {
-                kill_deployment(
+                let res = kill_deployment(
                     &node.system_id,
                     node.broker.as_ref().unwrap(),
                     &task.deployment_id.unwrap(),
                 )
                 .await;
+                if let Ok(r) = res {
+                    for d in node.deployments.iter_mut() {
+                        if d.deployment_id == r {
+                            d.deployment_is_ok(false);
+                            break;
+                        }
+                    }
+                }
             }
             _ => info!("Request type not handled"),
         }
     }
     drop(work_queue);
+
+    let mut nodes_to_remove = vec![];
+    let mut index: usize = 0;
+    for d in node.deployments.iter_mut() {
+        // if more than a second has passed, check for logs
+        if d.last_log_time
+            .elapsed()
+            .unwrap_or(std::time::Duration::new(0, 0))
+            .as_secs()
+            > 1
+        {
+            let docker = DockerBroker::new().await;
+
+            if let Some(docker) = docker {
+                let logs = docker.get_logs(&d.deployment_id, d.last_log_time).await;
+                d.update_log_time();
+                if logs.len() > 0 {
+                    let publisher = node.broker.as_ref().unwrap().get_channel().await;
+                    let mut msg = LogMessage::new(&d.deployment_id);
+                    msg.update_message(&logs.join(""));
+                    msg.send(&publisher, QueueLabel::Log.as_str()).await;
+                }
+            }
+        }
+
+        if let Err(_) = d.status {
+            nodes_to_remove.push(index);
+        }
+        index += 1;
+    }
+
+    nodes_to_remove.reverse();
+
+    for index in nodes_to_remove.iter() {
+        let mut split_list = node.deployments.split_off(*index);
+        split_list.pop_front();
+        node.deployments.append(&mut split_list);
+    }
     Ok(())
 }
 
@@ -126,7 +176,7 @@ pub async fn handle_deployment(
     broker: &RabbitBroker,
     git_uri: &str,
     id: &str,
-) -> Result<(), ()> {
+) -> Result<DeploymentInfo, DeploymentInfo> {
     let container_guid = id.clone();
 
     let publisher = broker.get_channel().await;
@@ -155,6 +205,8 @@ pub async fn handle_deployment(
     // Inject the proper dockerfile into the project
     // TODO read configuration information from toml file
 
+    let mut deployment_info = DeploymentInfo::new(container_guid, "", false);
+
     let deployment_config = match crate::deployment::config::get_config_for_path(&format!(
         "{}/shipwreck.toml",
         &tmp_dir_path
@@ -166,11 +218,15 @@ pub async fn handle_deployment(
                 &format!("shipwreck.toml not detected or incompatible format, please ensure your file is compliant"),
             );
             msg.send(&publisher, QueueLabel::Deployment.as_str()).await;
-            return Err(());
+            return Err(deployment_info);
         }
     };
 
     let port = deployment_config.config.port;
+
+    deployment_info.update_address(&format!("{}", port));
+
+    // Create deployment info before first docker command, so build logs will be preserved
 
     let dockerfile_name = match &deployment_config.config.lang[..] {
         "python3" => "python36.dockerfile",
@@ -181,7 +237,7 @@ pub async fn handle_deployment(
                 &format!("shipwreck.toml specified an unsupported language. check the Kraken-UI for supported languages"),
             );
             msg.send(&publisher, QueueLabel::Deployment.as_str()).await;
-            return Err(());
+            return Err(deployment_info);
         }
     };
 
@@ -228,21 +284,25 @@ pub async fn handle_deployment(
             } else {
                 msg.update_message(ApplicationStatus::Errored, "Error in deployment");
                 msg.send(&publisher, QueueLabel::Deployment.as_str()).await;
-                return Err(());
+                return Err(deployment_info);
             }
         } else {
             msg.update_message(ApplicationStatus::Errored, "Error in build process");
             msg.send(&publisher, QueueLabel::Deployment.as_str()).await;
             error!("Failed to build docker image for {}", &git_uri);
-            return Err(());
+            return Err(deployment_info);
         }
     }
-
-    Ok(())
+    deployment_info.deployment_is_ok(true);
+    Ok(deployment_info)
 }
 
-pub async fn kill_deployment(system_id: &str, broker: &RabbitBroker, id: &str) -> Result<(), ()> {
-    let container_guid = id.clone();
+pub async fn kill_deployment(
+    system_id: &str,
+    broker: &RabbitBroker,
+    container_id: &str,
+) -> Result<String, ()> {
+    let container_guid = container_id.clone();
 
     let publisher = broker.get_channel().await;
 
@@ -257,7 +317,7 @@ pub async fn kill_deployment(system_id: &str, broker: &RabbitBroker, id: &str) -
         docker.prune_containers(Some("1s")).await;
         msg.update_message(ApplicationStatus::Destroyed, "");
         msg.send(&publisher, QueueLabel::Deployment.as_str()).await;
-        return Ok(());
+        return Ok(container_guid.to_string());
     }
     Err(())
 }

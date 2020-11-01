@@ -50,10 +50,22 @@ impl RabbitMessage<SysinfoMessage> for SysinfoMessage {
 
         if res.len() == 5 {
             msg.update_message(
-                res.get(1).unwrap().parse::<u64>().unwrap(),
-                res.get(2).unwrap().parse::<u64>().unwrap(),
-                res.get(3).unwrap().parse::<u64>().unwrap(),
-                res.get(4).unwrap().parse::<f32>().unwrap(),
+                res.get(1)
+                    .unwrap_or(&String::from("0"))
+                    .parse::<u64>()
+                    .unwrap_or(0),
+                res.get(2)
+                    .unwrap_or(&String::from("0"))
+                    .parse::<u64>()
+                    .unwrap_or(0),
+                res.get(3)
+                    .unwrap_or(&String::from("0"))
+                    .parse::<u64>()
+                    .unwrap_or(0),
+                res.get(4)
+                    .unwrap_or(&String::from("0"))
+                    .parse::<f32>()
+                    .unwrap_or(0.0),
             );
         }
 
