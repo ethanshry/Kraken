@@ -12,9 +12,13 @@ use crate::rabbit::{
 };
 use crate::schema::{Mutation, Query};
 use log::{info, warn};
+use pnet::datalink;
+use rand;
 use std::fs;
+use std::net::Ipv4Addr;
 use std::process::Command;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 pub struct Orchestrator {
     api_server: Option<tokio::task::JoinHandle<()>>,
@@ -264,8 +268,6 @@ pub async fn setup(node: &mut GenericNode, o: &mut Orchestrator) -> Result<(), S
         .unwrap()
         .declare_queue(QueueLabel::Log.as_str())
         .await;
-
-    // TODO setup dns records
 
     // consume node information queue(s)
     let sysinfo_consumer = {

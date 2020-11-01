@@ -27,8 +27,11 @@ mod testing;
 mod utils;
 mod worker;
 
+use futures::future;
 use log::{error, info, warn};
 use platform_executor::{GenericNode, TaskFaliure};
+use pnet::datalink;
+use reqwest::Client;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum NodeMode {
@@ -40,8 +43,68 @@ pub enum NodeMode {
 async fn main() -> Result<(), ()> {
     dotenv::dotenv().ok();
     env_logger::init();
-    let rabbit_addr: String =
-        std::env::var("AMQP_ADDR").unwrap_or_else(|_| "amqp://localhost:5672".into());
+
+    // Seek orchestration API
+    let client = Client::new();
+
+    let mut ips = vec![];
+    for iface in datalink::interfaces() {
+        println!("{:?}", iface.ips);
+        for ip in iface.ips {
+            ips.push(ip.ip().to_string());
+            break;
+        }
+    }
+
+    info!("{:?}", ips);
+
+    let response = future::join_all(ips.into_iter().map(|ip| {
+        let client = &client;
+        async move {
+            let url = format!("http://{}:8000", ip);
+            println!("{}", url);
+            let data = client.get(&url).send().await;
+            match data {
+                Ok(data) => {
+                    return Some(ip);
+                }
+                Err(_) => {
+                    // Did not accept the connection
+                    return None;
+                }
+            }
+            //println!("{:?}", data.unwrap().bytes().await);
+        }
+    }))
+    .await;
+
+    let mut orchestrator_ip: Option<String> = None;
+
+    for potential_orchestrator in response {
+        match potential_orchestrator {
+            Some(ip) => {
+                orchestrator_ip = Some(ip);
+            }
+            _ => {}
+        }
+    }
+
+    let node_mode = match &orchestrator_ip {
+        Some(ip) => {
+            info!("Orchestrator detected, starting node as worker");
+            NodeMode::WORKER
+        }
+        None => {
+            info!("No orchestrator detected, starting node as orchestrator");
+            NodeMode::ORCHESTRATOR
+        }
+    };
+
+    let rabbit_addr: String = format!(
+        "amqp://{}:5672",
+        orchestrator_ip.unwrap_or(String::from("localhost"))
+    );
+    //std::env::var("AMQP_ADDR").unwrap_or_else(|_| "amqp://localhost:5672".into());
 
     info!("{}", rabbit_addr);
 
@@ -51,13 +114,13 @@ async fn main() -> Result<(), ()> {
 
     let mut worker = platform_executor::worker::Worker::new();
 
-    let node_mode = match platform_executor::worker::setup(&mut node, &mut worker).await {
+    /*let node_mode = match platform_executor::worker::setup(&mut node, &mut worker).await {
         Ok(_) => NodeMode::WORKER,
         Err(e) => {
             warn!("{:?}", e);
             NodeMode::ORCHESTRATOR
         }
-    };
+    };*/
 
     let mut orchestrator = platform_executor::orchestrator::Orchestrator::new();
 
