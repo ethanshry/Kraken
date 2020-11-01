@@ -94,7 +94,7 @@ async fn main() -> Result<(), ()> {
                 };
                 // An Orchestrator IS a worker, so do worker tasks too
                 // This may cause problems later due to sharing of Node information? Not sure
-                match platform_executor::worker::execute(&node, &mut worker).await {
+                match platform_executor::worker::execute(&mut node, &mut worker).await {
                     Ok(_) => {}
                     Err(faliure) => match faliure {
                         TaskFaliure::SigKill => {
@@ -104,7 +104,7 @@ async fn main() -> Result<(), ()> {
                 };
             }
             NodeMode::WORKER => {
-                match platform_executor::worker::execute(&node, &mut worker).await {
+                match platform_executor::worker::execute(&mut node, &mut worker).await {
                     Ok(_) => {}
                     Err(faliure) => match faliure {
                         TaskFaliure::SigKill => {

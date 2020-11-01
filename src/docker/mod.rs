@@ -1,8 +1,8 @@
 use bollard::image::ListImagesOptions;
 use bollard::{
     container::{
-        Config, CreateContainerOptions, ListContainersOptions, PruneContainersOptions,
-        StartContainerOptions, StopContainerOptions,
+        Config, CreateContainerOptions, ListContainersOptions, LogOutput, LogsOptions,
+        PruneContainersOptions, StartContainerOptions, StopContainerOptions,
     },
     image::{BuildImageOptions, PruneImagesOptions},
     service::{HostConfig, PortBinding},
@@ -13,10 +13,12 @@ use flate2::Compression;
 use futures_util::stream::StreamExt;
 use log::{error, info};
 use std::collections::HashMap;
+use std::convert::TryFrom;
 use std::fs;
 use std::fs::File;
 use std::io::Read;
 use std::process::Command;
+use std::time::SystemTime;
 use uuid::Uuid;
 
 pub mod docker_container;
@@ -76,6 +78,49 @@ impl DockerBroker {
             ids.push(image.id);
         }
         ids
+    }
+
+    pub async fn get_logs(&self, container_id: &str, time: SystemTime) -> Vec<String> {
+        let options = Some(LogsOptions::<String> {
+            stdout: true,
+            stderr: true,
+            timestamps: true,
+            since: i64::try_from(
+                time.duration_since(SystemTime::UNIX_EPOCH)
+                    .expect("Bad Duration for System Logs")
+                    .as_secs(),
+            )
+            .unwrap_or(0),
+            ..Default::default()
+        });
+        let mut stream = self.conn.logs(container_id, options);
+        let mut log_items = vec![];
+
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(m) => {
+                    info!("{}", m);
+                    match m {
+                        LogOutput::StdOut { message: m } | LogOutput::Console { message: m } => {
+                            log_items
+                                .push(format!("[LOG]: {}", std::str::from_utf8(&m).unwrap_or("")));
+                        }
+                        LogOutput::StdIn { message: m } => {
+                            log_items
+                                .push(format!("[IN]: {}", std::str::from_utf8(&m).unwrap_or("")));
+                        }
+                        LogOutput::StdErr { message: m } => {
+                            log_items
+                                .push(format!("[ERR]: {}", std::str::from_utf8(&m).unwrap_or("")));
+                        }
+                    }
+                }
+                Err(_) => {}
+            }
+        }
+
+        log_items
+        //for log in self.conn.logs(container_id, options).iter() {}
     }
 
     /// Gets a list of running docker containers

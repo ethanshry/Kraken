@@ -1,7 +1,5 @@
 use crate::db::{Database, ManagedDatabase};
-use crate::model::{
-    ApplicationInstance, ApplicationStatus, Deployment, Node, Orchestrator, Platform, Service,
-};
+use crate::model::{ApplicationStatus, Deployment, Node, Orchestrator, Platform, Service};
 use juniper::{FieldError, FieldResult};
 use uuid::Uuid;
 

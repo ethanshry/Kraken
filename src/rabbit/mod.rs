@@ -1,4 +1,5 @@
 pub mod deployment_message;
+pub mod log_message;
 pub mod sysinfo_message;
 pub mod work_request_message;
 use async_trait::async_trait;
@@ -16,6 +17,7 @@ pub struct RabbitBroker {
 pub enum QueueLabel {
     Sysinfo,
     Deployment,
+    Log,
 }
 
 impl QueueLabel {
@@ -36,6 +38,7 @@ impl QueueLabel {
         match *self {
             QueueLabel::Sysinfo => "sysinfo",
             QueueLabel::Deployment => "deployment",
+            QueueLabel::Log => "log",
         }
     }
 }
