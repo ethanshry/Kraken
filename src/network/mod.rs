@@ -1,16 +1,17 @@
 // Maybe look into this for ideas for safety
 // https://github.com/babariviere/port_scanner-rs/blob/master/src/lib.rs
-use async_std::prelude::*;
-use async_std::stream;
-use log::{error, info, warn};
+use log::info;
 use pnet::{datalink, ipnetwork::IpNetwork};
-use std::convert::TryInto;
-use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener, TcpStream};
+use std::net::IpAddr;
+
+// Constants to restrict subnet to search through, speeds up search significantly
+const MIN_SUBNET_ADDR: u8 = 30;
+const MAX_SUBNET_ADDR: u8 = 70;
 
 pub async fn scan_network_for_machines(port: u16) -> Vec<String> {
     let mut subnet_addr: Option<[u8; 3]> = None;
     'ifaces: for iface in datalink::interfaces() {
-        println!("{:?}", iface.ips);
+        //println!("{:?}", iface.ips);
         for ip in iface.ips {
             if let IpNetwork::V4(addr) = ip {
                 if addr.ip().to_string() != "127.0.0.1" {
@@ -26,7 +27,6 @@ pub async fn scan_network_for_machines(port: u16) -> Vec<String> {
 
                     subnet_addr = Some(subnet_addr_vec);
 
-                    //subnet_addr = Some(addr.ip().octets()[0..2].try_into().unwrap());
                     break 'ifaces;
                 }
             }
@@ -38,12 +38,8 @@ pub async fn scan_network_for_machines(port: u16) -> Vec<String> {
         None => return vec![],
         Some(subnet) => {
             let mut addrs_to_scan: Vec<String> = vec![];
-            for x in 30..70 {
+            for x in MIN_SUBNET_ADDR..MAX_SUBNET_ADDR {
                 addrs_to_scan.push(format!("{}.{}.{}.{}", subnet[0], subnet[1], subnet[2], x));
-                /*addrs_to_scan.push(SocketAddr::new(
-                    IpAddr::V4(Ipv4Addr::new(subnet[0], subnet[1], subnet[2], x)),
-                    port,
-                ));*/
             }
             // TODO maybe look into https://github.com/rayon-rs/rayon to make this better
             let mut open_addrs = vec![];
@@ -62,98 +58,15 @@ pub async fn scan_network_for_machines(port: u16) -> Vec<String> {
 
             info!("{:?}", open_addrs);
             return open_addrs;
-            /*
-            let mut items = addrs_to_scan.into_iter().map(|addr| async move {
-                info!("Scanning network address {}", addr);
-
-                let client = reqwest::Client::new();
-
-                (addr, client
-                    .get(&format!("http://{}:{}/ping", addr, port))
-                    .send().await)
-            });
-
-            let mut items = items.into_iter().map(|i| async { i.await });
-
-            let mut items = items.into_iter().filter_map(|i| {
-                match i {
-                    (addr, Ok(_)) => Some(addr),
-                    (addr, Err(_)) => None,
-                }
-            })
-            */
-            /*
-            let mut stream = stream::from_iter(addrs_to_scan.into_iter().filter_map(|addr| async {
-                info!("Scanning network address {}", addr);
-                let client = reqwest::Client::new();
-
-                let response = client
-                    .get(&format!("http://{}:{}/ping", addr, port))
-                    .send()
-                    .await;
-                match response {
-                    Ok(_) => true,
-                    Err(_) => false,
-                }
-            });*/
-            /*
-            stream = stream.filter(|addr| async {
-                info!("Scanning network address {}", addr);
-                let client = reqwest::Client::new();
-
-                let response = client
-                    .get(&format!("http://{}:{}/ping", addr, port))
-                    .send()
-                    .await;
-                match response {
-                    Ok(_) => true,
-                    Err(_) => false,
-                }
-            });*/
-
-            //while let n = stream.next().await {
-            //    println!("{:?}", n);
-            //}
-            //return vec![];
-            /*
-            let addrs: Vec<String> = addrs_to_scan
-                .into_iter()
-                .filter(|addr| async {
-                    info!("Scanning network address {}", addr);
-                    let client = reqwest::Client::new();
-
-                    let response = client
-                        .get(&format!("http://{}:{}/ping", addr, port))
-                        .send()
-                        .await;
-                    match response {
-                        Ok(_) => true,
-                        Err(_) => false,
-                    }
-                    /*match reqwest::blocking::get(&format!("http://{}:{}/ping", addr, port)) {
-                        Ok(_) => true,
-                        Err(_) => false,
-                    }*/
-                    /*match TcpStream::connect_timeout(addr, std::time::Duration::new(0, 100000000)) {
-                        Ok(s) => true,
-                        Err(s) => false,
-                    }*/
-                })
-                .collect();
-            info!("Finished scanning, {} devices detected", addrs.len());
-            info!("{:?}", addrs);
-
-            return addrs;
-            */
-            /*.into_iter()
-            .map(|socket_addr| {
-                return socket_addr.ip();
-            })
-            .collect()*/
         }
     }
 }
 
-pub fn find_orchestrator_on_lan() -> Option<IpAddr> {
+pub async fn find_orchestrator_on_lan() -> Option<String> {
+    // TODO drive port from ENV or config or something
+    let machines = scan_network_for_machines(8000).await; // Look for Rocket server
+    if machines.len() != 0 {
+        return Some(machines.get(0).unwrap().to_string());
+    }
     return None;
 }

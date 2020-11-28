@@ -146,4 +146,31 @@ impl Database {
             _ => Some(res),
         }
     }
+
+    pub fn add_application_instance_to_node(
+        &mut self,
+        node_id: &str,
+        deployment_id: String,
+    ) -> Result<(), ()> {
+        if let Some(n) = self.nodes.get(node_id) {
+            let mut node = n.clone();
+            node.application_instances.push(deployment_id);
+            self.nodes.insert(node.id.clone(), node.to_owned());
+            return Ok(());
+        }
+        Err(())
+    }
+
+    pub fn remove_application_instance_from_nodes(&mut self, deployment_id: &str) {
+        if let Some(nodes) = self.get_nodes() {
+            let key = String::from(deployment_id);
+            for node in nodes {
+                if node.application_instances.contains(&key) {
+                    let mut node = node.clone();
+                    node.application_instances.retain(|id| id != deployment_id);
+                    self.nodes.insert(node.id.clone(), node.to_owned());
+                }
+            }
+        }
+    }
 }
