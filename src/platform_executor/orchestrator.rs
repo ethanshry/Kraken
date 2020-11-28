@@ -477,7 +477,7 @@ pub async fn execute(node: &GenericNode, o: &Orchestrator) -> Result<(), TaskFal
                                         );
                                         let publisher =
                                             node.broker.as_ref().unwrap().get_channel().await;
-                                        msg.send(&publisher, &node.system_id).await;
+                                        msg.send(&publisher, &curr_node.id).await;
 
                                         db.add_application_instance_to_node(
                                             &curr_node.id,
