@@ -8,6 +8,8 @@ edition = "2018"
 
 [dependencies]
 async-trait = "0.1"
+async-std = "1.7.0"
+autodiscover-rs = "0.1.0"
 base64 = "0.13.0"
 bollard = "0.8"
 dotenv = "0.15.0"
