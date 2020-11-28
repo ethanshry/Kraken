@@ -41,6 +41,7 @@ pub async fn setup(node: &mut GenericNode, w: &mut Worker) -> Result<(), SetupFa
     }
 
     // Declare rabbit queue
+    info!("Declared rabbit queue for {}", &node.system_id);
     node.broker
         .as_ref()
         .unwrap()

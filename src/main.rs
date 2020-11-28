@@ -19,6 +19,7 @@ mod file_utils;
 mod git_utils;
 mod gitapi;
 mod model;
+mod network;
 mod platform_executor;
 mod rabbit;
 mod routes;
@@ -27,7 +28,7 @@ mod testing;
 mod utils;
 mod worker;
 
-use log::{error, info, warn};
+use log::{error, info};
 use platform_executor::{GenericNode, TaskFaliure};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -40,24 +41,35 @@ pub enum NodeMode {
 async fn main() -> Result<(), ()> {
     dotenv::dotenv().ok();
     env_logger::init();
-    let rabbit_addr: String =
-        std::env::var("AMQP_ADDR").unwrap_or_else(|_| "amqp://localhost:5672".into());
+
+    let mut orchestrator_ip: Option<String> = network::find_orchestrator_on_lan().await;
+
+    let node_mode = match &orchestrator_ip {
+        Some(ip) => {
+            info!("Orchestrator detected, starting node as worker");
+            NodeMode::WORKER
+        }
+        None => {
+            info!("No orchestrator detected, starting node as orchestrator");
+            NodeMode::ORCHESTRATOR
+        }
+    };
+
+    let rabbit_addr: String = format!(
+        "amqp://{}:5672",
+        orchestrator_ip.unwrap_or(String::from("localhost"))
+    );
+    //std::env::var("AMQP_ADDR").unwrap_or_else(|_| "amqp://localhost:5672".into());
 
     info!("{}", rabbit_addr);
 
     let system_uuid = utils::get_system_id();
+    info!("{}", system_uuid);
 
     let mut node = GenericNode::new(&system_uuid, &rabbit_addr);
+    info!("node established");
 
     let mut worker = platform_executor::worker::Worker::new();
-
-    let node_mode = match platform_executor::worker::setup(&mut node, &mut worker).await {
-        Ok(_) => NodeMode::WORKER,
-        Err(e) => {
-            warn!("{:?}", e);
-            NodeMode::ORCHESTRATOR
-        }
-    };
 
     let mut orchestrator = platform_executor::orchestrator::Orchestrator::new();
 
@@ -77,6 +89,10 @@ async fn main() -> Result<(), ()> {
                 )
             }
         }
+    } else {
+        platform_executor::worker::setup(&mut node, &mut worker)
+            .await
+            .unwrap();
     }
 
     testing::setup_experiment(&mut node, &mut orchestrator).await;

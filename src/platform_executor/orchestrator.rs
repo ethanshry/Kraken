@@ -265,8 +265,6 @@ pub async fn setup(node: &mut GenericNode, o: &mut Orchestrator) -> Result<(), S
         .declare_queue(QueueLabel::Log.as_str())
         .await;
 
-    // TODO setup dns records
-
     // consume node information queue(s)
     let sysinfo_consumer = {
         let arc = o.db_ref.clone();
@@ -475,8 +473,13 @@ pub async fn execute(node: &GenericNode, o: &Orchestrator) -> Result<(), TaskFal
                                         );
                                         let publisher =
                                             node.broker.as_ref().unwrap().get_channel().await;
-                                        msg.send(&publisher, &node.system_id).await;
+                                        msg.send(&publisher, &curr_node.id).await;
 
+                                        db.add_application_instance_to_node(
+                                            &curr_node.id,
+                                            deployment.id,
+                                        )
+                                        .unwrap();
                                         // Deployment has been scheduled
                                     }
                                 }
@@ -532,6 +535,7 @@ pub async fn execute(node: &GenericNode, o: &Orchestrator) -> Result<(), TaskFal
                         let mut db = arc.lock().unwrap();
                         deployment.status = ApplicationStatus::DelegatingDestruction;
                         db.update_deployment(&deployment.id, &deployment);
+                        db.remove_application_instance_from_nodes(&deployment.id);
                         drop(db);
                         let msg = WorkRequestMessage::new(
                             WorkRequestType::CancelDeployment,
