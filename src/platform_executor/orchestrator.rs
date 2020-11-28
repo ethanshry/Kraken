@@ -12,13 +12,9 @@ use crate::rabbit::{
 };
 use crate::schema::{Mutation, Query};
 use log::{info, warn};
-use pnet::datalink;
-use rand;
 use std::fs;
-use std::net::Ipv4Addr;
 use std::process::Command;
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
 
 pub struct Orchestrator {
     api_server: Option<tokio::task::JoinHandle<()>>,

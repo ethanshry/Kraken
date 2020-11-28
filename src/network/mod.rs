@@ -2,7 +2,6 @@
 // https://github.com/babariviere/port_scanner-rs/blob/master/src/lib.rs
 use log::info;
 use pnet::{datalink, ipnetwork::IpNetwork};
-use std::net::IpAddr;
 
 // Constants to restrict subnet to search through, speeds up search significantly
 const MIN_SUBNET_ADDR: u8 = 30;

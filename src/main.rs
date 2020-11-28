@@ -71,14 +71,6 @@ async fn main() -> Result<(), ()> {
 
     let mut worker = platform_executor::worker::Worker::new();
 
-    /*let node_mode = match platform_executor::worker::setup(&mut node, &mut worker).await {
-        Ok(_) => NodeMode::WORKER,
-        Err(e) => {
-            warn!("{:?}", e);
-            NodeMode::ORCHESTRATOR
-        }
-    };*/
-
     let mut orchestrator = platform_executor::orchestrator::Orchestrator::new();
 
     if node_mode == NodeMode::ORCHESTRATOR {
