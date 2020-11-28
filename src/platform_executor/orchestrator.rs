@@ -479,13 +479,11 @@ pub async fn execute(node: &GenericNode, o: &Orchestrator) -> Result<(), TaskFal
                                             node.broker.as_ref().unwrap().get_channel().await;
                                         msg.send(&publisher, &node.system_id).await;
 
-                                        let mut db = arc.lock().unwrap();
                                         db.add_application_instance_to_node(
                                             &curr_node.id,
                                             deployment.id,
                                         )
                                         .unwrap();
-                                        drop(db);
                                         // Deployment has been scheduled
                                     }
                                 }

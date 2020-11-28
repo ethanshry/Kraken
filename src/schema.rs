@@ -1,6 +1,7 @@
 use crate::db::{Database, ManagedDatabase};
 use crate::model::{ApplicationStatus, Deployment, Node, Orchestrator, Platform, Service};
 use juniper::{FieldError, FieldResult};
+use log::{error, info};
 use uuid::Uuid;
 
 impl juniper::Context for Database {}
@@ -136,6 +137,7 @@ impl Query {
     /// Get a list of all nodes currently attached to the platform
     fn get_nodes(context: &ManagedDatabase) -> FieldResult<Option<Vec<Node>>> {
         //let res = context.db.lock().unwrap().get_node(&node_id);
+        info!("Getting nodes!");
         let res = context.db.lock().unwrap().get_nodes();
         // Return the result.
         Ok(res)

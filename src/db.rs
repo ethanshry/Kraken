@@ -94,6 +94,7 @@ impl Database {
     }
 
     pub fn get_nodes(&self) -> Option<Vec<Node>> {
+        info!("Trying to get the nodes from the hashmap");
         let mut res = vec![];
 
         for (_, v) in self.nodes.iter() {
@@ -152,6 +153,7 @@ impl Database {
         node_id: &str,
         deployment_id: String,
     ) -> Result<(), ()> {
+        info!("Doing app instance insert");
         if let Some(n) = self.nodes.get(node_id) {
             let mut node = n.clone();
             node.application_instances.push(deployment_id);
@@ -162,6 +164,7 @@ impl Database {
     }
 
     pub fn remove_application_instance_from_nodes(&mut self, deployment_id: &str) {
+        info!("Doing app instance remove");
         if let Some(nodes) = self.get_nodes() {
             let key = String::from(deployment_id);
             for node in nodes {
