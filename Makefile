@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: documentation spinup-rabbit spinup-dns cleanup
+.PHONY: documentation spinup-rabbit spinup-dns cleanup reboot
 
 documentation:
 	cargo doc --open
@@ -14,4 +14,8 @@ spinup-dns:
 
 cleanup:
 	(docker ps -a | grep tcp) && docker stop $$(docker ps -aq)
-	docker system prune
+	docker system prune -f
+
+reboot:
+	make cleanup
+	cargo run

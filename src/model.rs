@@ -1,6 +1,7 @@
 use juniper;
 use serde::{Deserialize, Serialize};
 use std::string::ToString; // for strum enum to string
+use std::time::SystemTime;
 use strum_macros::{Display, EnumString};
 
 #[derive(Serialize, Debug, Deserialize, Clone, juniper::GraphQLEnum)]
@@ -208,6 +209,12 @@ pub enum ApplicationStatus {
     UpdateRequested,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct TemporalApplicationStatus {
+    pub status: ApplicationStatus,
+    pub time: u64,
+}
+
 #[derive(Serialize, Debug, Deserialize, Clone, juniper::GraphQLObject)]
 #[graphql(description = "Metadata pertaining to the Orchestrator User Interface")]
 pub struct OrchestratorInterface {
@@ -263,7 +270,8 @@ pub struct Deployment {
     pub src_url: String,
     pub version: String,
     pub commit: String,
-    pub status: ApplicationStatus,
+    pub status: (ApplicationStatus, SystemTime),
+    pub status_history: Vec<(ApplicationStatus, SystemTime)>,
     pub results_url: String,
     pub deployment_url: String,
     pub node: String, //Vec<Option<ApplicationInstance>>,
@@ -285,7 +293,8 @@ impl Deployment {
             src_url: src_url.to_owned(),
             version: version.to_owned(),
             commit: commit.to_owned(),
-            status,
+            status: (status, SystemTime::now()),
+            status_history: vec![],
             results_url: results_url.to_owned(),
             deployment_url: deployment_url.to_owned(),
             node: node.to_owned(), //instances.to_owned(),
@@ -293,7 +302,8 @@ impl Deployment {
     }
 
     pub fn update_status(&mut self, new_status: ApplicationStatus) {
-        self.status = new_status;
+        self.status_history.push(self.status.clone());
+        self.status = (new_status, SystemTime::now());
     }
 
     // TODO modify to update_instance
@@ -316,6 +326,7 @@ impl Clone for Deployment {
             version: self.version.clone(),
             commit: self.commit.clone(),
             status: self.status.clone(),
+            status_history: self.status_history.clone(),
             results_url: self.results_url.clone(),
             deployment_url: self.deployment_url.clone(),
             node: self.node.clone(),
