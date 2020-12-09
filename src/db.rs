@@ -1,8 +1,10 @@
+use crate::file_utils::get_all_files_in_folder;
 use crate::model::{
     ApplicationStatus, Deployment, Node, Orchestrator, OrchestratorInterface, Service,
 };
 use log::{info, warn};
 use std::collections::HashMap;
+use std::fs;
 use std::sync::{Arc, Mutex};
 
 /// An ARC to a Database

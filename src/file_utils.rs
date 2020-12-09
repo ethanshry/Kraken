@@ -1,5 +1,6 @@
 use log::{info, warn};
 use std::fs;
+use std::io;
 use std::io::prelude::*;
 
 /// Copies a directory's contents to crate/static/
@@ -83,5 +84,19 @@ pub fn append_to_file(file_path: &str, data: &str) {
         Err(_) => {
             warn!("Error opening file at {}", file_path);
         }
+    }
+}
+
+pub fn get_all_files_in_folder(path: &str) -> Result<Vec<String>, ()> {
+    let entries = fs::read_dir(path);
+    match entries {
+        Ok(e) => {
+            let results = e
+                .map(|res| res.map(|e| format!("{}", e.path().display())))
+                .collect::<Result<Vec<_>, io::Error>>()
+                .unwrap_or(vec![]);
+            Ok(results)
+        }
+        Err(_) => Err(()),
     }
 }

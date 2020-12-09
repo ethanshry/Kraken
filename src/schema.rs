@@ -1,6 +1,10 @@
 use crate::db::{Database, ManagedDatabase};
-use crate::model::{ApplicationStatus, Deployment, Node, Orchestrator, Platform, Service};
+use crate::model::{
+    ApplicationStatus, Deployment, Node, Orchestrator, Platform, Service, TemporalApplicationStatus,
+};
 use juniper::{FieldError, FieldResult};
+use std::convert::TryFrom;
+use std::time::{Duration, UNIX_EPOCH};
 use uuid::Uuid;
 
 impl juniper::Context for Database {}
@@ -54,6 +58,18 @@ impl Node {
 
 #[juniper::object(context = ManagedDatabase)]
 #[graphql(description = "A physical devide which is a member of the platform")]
+impl TemporalApplicationStatus {
+    fn status(&self) -> ApplicationStatus {
+        self.status.clone()
+    }
+    fn time(&self) -> i32 {
+        //u64::try_from(self.time).unwrap_or(0)
+        self.time as i32
+    }
+}
+
+#[juniper::object(context = ManagedDatabase)]
+#[graphql(description = "A physical devide which is a member of the platform")]
 impl Deployment {
     fn id(&self) -> &str {
         self.id.as_str()
@@ -72,7 +88,31 @@ impl Deployment {
     }
 
     fn status(&self) -> ApplicationStatus {
-        self.status.clone()
+        self.status.0.clone()
+    }
+
+    fn status_history(&self) -> Vec<TemporalApplicationStatus> {
+        let mut statuses = vec![];
+        for s in self.status_history.clone() {
+            statuses.push(TemporalApplicationStatus {
+                status: s.0.clone(),
+                time: s
+                    .1
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap_or(Duration::new(0, 0))
+                    .as_secs(),
+            });
+        }
+        statuses.push(TemporalApplicationStatus {
+            status: self.status.0.clone(),
+            time: self
+                .status
+                .1
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or(Duration::new(0, 0))
+                .as_secs(),
+        });
+        statuses
     }
 
     fn results_url(&self) -> &str {
@@ -154,6 +194,26 @@ impl Query {
         }
     }
 
+    pub fn get_available_logs() -> FieldResult<Vec<String>> {
+        let mut logs = vec![];
+        for file in crate::file_utils::get_all_files_in_folder(&format!(
+            "{}/{}",
+            env!("CARGO_MANIFEST_DIR"),
+            "log"
+        ))
+        .unwrap_or(vec![])
+        {
+            let file_pieces: Vec<&str> = file.split('.').collect();
+            if file_pieces[1] == "log" {
+                let path_pieces: Vec<&str> = file_pieces[0].split('/').collect();
+                if let Some(p) = path_pieces.last() {
+                    logs.push(String::from(*p));
+                }
+            }
+        }
+        Ok(logs)
+    }
+
     //fn get_platform(context: &Database) -> FieldResult<Option<Platform>> {
     //}
 }
@@ -185,7 +245,7 @@ impl Mutation {
         let mut db = context.db.lock().unwrap();
         match db.get_deployment(&deployment_id) {
             Some(mut d) => {
-                d.status = ApplicationStatus::UpdateRequested;
+                d.update_status(ApplicationStatus::UpdateRequested);
                 db.update_deployment(&deployment_id, &d);
                 Ok(true)
             }
@@ -200,7 +260,7 @@ impl Mutation {
         let mut db = context.db.lock().unwrap();
         match db.get_deployment(&deployment_id) {
             Some(mut d) => {
-                d.status = ApplicationStatus::DestructionRequested;
+                d.update_status(ApplicationStatus::DestructionRequested);
                 db.update_deployment(&deployment_id, &d);
                 Ok(true)
             }

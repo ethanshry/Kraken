@@ -47,7 +47,8 @@ pub fn create_api_server(o: &Orchestrator) -> tokio::task::JoinHandle<()> {
                     crate::routes::graphiql,
                     crate::routes::get_graphql_handler,
                     crate::routes::post_graphql_handler,
-                    crate::routes::site
+                    crate::routes::site,
+                    crate::routes::logs
                 ],
             )
             .attach(options)
@@ -58,6 +59,13 @@ pub fn create_api_server(o: &Orchestrator) -> tokio::task::JoinHandle<()> {
 
 /// Pulls the Kraken-UI to be served by the API Server
 async fn fetch_ui(o: &Orchestrator) -> () {
+    if &std::env::var("SHOULD_CLONE_UI").unwrap_or_else(|_| "YES".into())[..] == "NO" {
+        warn!(
+            "ENV is configured to skip UI download and compile, this may not be desired behaviour"
+        );
+        return;
+    }
+
     let git_data =
         crate::gitapi::GitApi::get_tail_commits_for_repo_branches("ethanshry", "kraken-ui").await;
 
@@ -118,6 +126,7 @@ async fn fetch_ui(o: &Orchestrator) -> () {
             .output()
             .expect("err in clone");
 
+        copy_dir_contents_to_static("tmp/site/public");
         copy_dir_contents_to_static("tmp/site/dist");
         fs::remove_dir_all("tmp/site").unwrap();
         info!("Compilation of Kraken-UI Complete");
@@ -222,9 +231,9 @@ pub async fn setup(node: &mut GenericNode, o: &mut Orchestrator) -> Result<(), S
     // clear all tmp files
     clear_tmp();
 
-    fs::create_dir_all("log/.kraken").unwrap();
+    fs::create_dir_all("log").unwrap();
 
-    fs::create_dir_all("log/.kraken/logs").unwrap();
+    fs::create_dir_all("log").unwrap();
 
     // download site
     let ui = fetch_ui(o);
@@ -371,10 +380,7 @@ pub async fn setup(node: &mut GenericNode, o: &mut Orchestrator) -> Result<(), S
         let addr = node.rabbit_addr.clone();
         let handler = move |data: Vec<u8>| {
             let (deployment_id, message) = LogMessage::deconstruct_message(&data);
-            append_to_file(
-                &format!("log/.kraken/logs/{}.log", &deployment_id),
-                &message.message,
-            );
+            append_to_file(&format!("log/{}.log", &deployment_id), &message.message);
             return ();
         };
         tokio::spawn(async move {
@@ -414,10 +420,10 @@ pub async fn execute(node: &GenericNode, o: &Orchestrator) -> Result<(), TaskFal
         drop(db);
         if let Some(d) = deployments {
             for mut deployment in d {
-                match deployment.status {
+                match deployment.status.0 {
                     ApplicationStatus::DeploymentRequested => {
                         // Look for free nodes to distribute tasks to
-                        deployment.status = ApplicationStatus::ValidatingDeploymentData;
+                        deployment.update_status(ApplicationStatus::ValidatingDeploymentData);
                         let mut db = arc.lock().unwrap();
                         db.update_deployment(&deployment.id, &deployment);
                         drop(db);
@@ -426,13 +432,13 @@ pub async fn execute(node: &GenericNode, o: &Orchestrator) -> Result<(), TaskFal
                             Err(_) => {
                                 warn!("Deployment failed validation {}", &deployment.id);
                                 let mut db = arc.lock().unwrap();
-                                deployment.status = ApplicationStatus::Errored;
+                                deployment.update_status(ApplicationStatus::Errored);
                                 db.update_deployment(&deployment.id, &deployment);
                                 drop(db);
                             }
                             Ok(commit) => {
                                 let mut db = arc.lock().unwrap();
-                                deployment.status = ApplicationStatus::DelegatingDeployment;
+                                deployment.update_status(ApplicationStatus::DelegatingDeployment);
                                 deployment.commit = commit;
                                 db.update_deployment(&deployment.id, &deployment);
                                 let nodes = db.get_nodes();
@@ -443,7 +449,7 @@ pub async fn execute(node: &GenericNode, o: &Orchestrator) -> Result<(), TaskFal
                                             "No node available to accept deployment {}",
                                             &deployment.id
                                         );
-                                        deployment.status = ApplicationStatus::Errored;
+                                        deployment.update_status(ApplicationStatus::Errored);
                                         db.update_deployment(&deployment.id, &deployment);
                                     }
                                     Some(nodes) => {
@@ -459,7 +465,7 @@ pub async fn execute(node: &GenericNode, o: &Orchestrator) -> Result<(), TaskFal
                                         }
 
                                         deployment.node = curr_node.id.clone();
-                                        deployment.status = ApplicationStatus::Errored;
+                                        deployment.update_status(ApplicationStatus::Errored);
                                         db.update_deployment(&deployment.id, &deployment);
 
                                         // curr_node will recieve the work
@@ -502,7 +508,8 @@ pub async fn execute(node: &GenericNode, o: &Orchestrator) -> Result<(), TaskFal
                                         &deployment.id
                                     );
                                     let mut db = arc.lock().unwrap();
-                                    deployment.status = ApplicationStatus::DelegatingDestruction;
+                                    deployment
+                                        .update_status(ApplicationStatus::DelegatingDestruction);
                                     db.update_deployment(&deployment.id, &deployment);
                                     drop(db);
                                     let msg = WorkRequestMessage::new(
@@ -524,7 +531,7 @@ pub async fn execute(node: &GenericNode, o: &Orchestrator) -> Result<(), TaskFal
                                 } else {
                                     info!("Update requested for up-to-date deployment");
                                     let mut db = arc.lock().unwrap();
-                                    deployment.status = ApplicationStatus::Running;
+                                    deployment.update_status(ApplicationStatus::Running);
                                     db.update_deployment(&deployment.id, &deployment);
                                     drop(db);
                                 }
@@ -533,7 +540,7 @@ pub async fn execute(node: &GenericNode, o: &Orchestrator) -> Result<(), TaskFal
                     }
                     ApplicationStatus::DestructionRequested => {
                         let mut db = arc.lock().unwrap();
-                        deployment.status = ApplicationStatus::DelegatingDestruction;
+                        deployment.update_status(ApplicationStatus::DelegatingDestruction);
                         db.update_deployment(&deployment.id, &deployment);
                         db.remove_application_instance_from_nodes(&deployment.id);
                         drop(db);
