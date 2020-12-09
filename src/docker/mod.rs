@@ -1,3 +1,5 @@
+//! Interface between rust and docker engine (either via bollard or the CLI)
+
 use bollard::image::ListImagesOptions;
 use bollard::{
     container::{

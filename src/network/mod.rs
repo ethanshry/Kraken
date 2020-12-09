@@ -69,3 +69,39 @@ pub async fn find_orchestrator_on_lan() -> Option<String> {
     }
     return None;
 }
+
+/// Tries to hit a url, and returns success (true) or faliure (false)
+pub async fn healthcheck(url: &str) -> bool {
+    match reqwest::Client::new()
+        .get(&format!("{}", url))
+        .timeout(std::time::Duration::new(0, 1000000000))
+        .send()
+        .await
+    {
+        Ok(_) => true,
+        Err(_) => false,
+    }
+}
+
+/// Continually retries healthcheck until is accepted,
+/// Will try infinitely unless given a retry limit
+/// returns success (true) or faliure (false)
+pub async fn wait_for_good_healthcheck(url: &str, retry_count: Option<u16>) -> bool {
+    match retry_count {
+        Some(i) => {
+            for _ in 0..i {
+                if let true = healthcheck(url).await {
+                    return true;
+                }
+                std::thread::sleep(std::time::Duration::new(0, 500000000));
+            }
+            return false;
+        }
+        None => loop {
+            if let true = healthcheck(url).await {
+                return true;
+            }
+            std::thread::sleep(std::time::Duration::new(0, 500000000));
+        },
+    }
+}

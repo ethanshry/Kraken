@@ -1,8 +1,14 @@
+//! Kraken is a LAN-based, distributed, fault tolerant application deployment platform
+//!
+//! See CRATE_MANIFEST_DIR/documentation for more information
+
 #![feature(proc_macro_hygiene, decl_macro, async_closure)]
 #![allow(dead_code)]
+#![warn(missing_docs, rust_2018_idioms)]
 
 #[macro_use]
 extern crate juniper;
+/* TODO rm
 extern crate fs_extra;
 extern crate queues;
 extern crate rocket;
@@ -11,7 +17,9 @@ extern crate serde;
 extern crate strum;
 extern crate strum_macros;
 extern crate tokio;
+*/
 
+mod api_routes;
 mod db;
 mod deployment;
 mod docker;
@@ -22,7 +30,6 @@ mod model;
 mod network;
 mod platform_executor;
 mod rabbit;
-mod routes;
 mod schema;
 mod testing;
 mod utils;
@@ -33,7 +40,9 @@ use platform_executor::{GenericNode, TaskFaliure};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum NodeMode {
+    /// A node only responsible for handling deployments
     WORKER,
+    /// A node which both coordinates the platform and handles deployments
     ORCHESTRATOR,
 }
 

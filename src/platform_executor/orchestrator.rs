@@ -2,6 +2,7 @@ use crate::db::{Database, ManagedDatabase};
 use crate::file_utils::{append_to_file, clear_tmp, copy_dir_contents_to_static};
 use crate::git_utils::clone_remote_branch;
 use crate::model::{ApplicationStatus, Node, Service, ServiceStatus};
+use crate::network::wait_for_good_healthcheck;
 use crate::platform_executor::{GenericNode, SetupFaliure, Task, TaskFaliure};
 use crate::rabbit::{
     deployment_message::DeploymentMessage,
@@ -38,17 +39,17 @@ pub fn create_api_server(o: &Orchestrator) -> tokio::task::JoinHandle<()> {
     let server = tokio::spawn(async move {
         rocket::ignite()
             .manage(ManagedDatabase::new(db_ref))
-            .manage(crate::routes::Schema::new(Query, Mutation))
+            .manage(crate::api_routes::Schema::new(Query, Mutation))
             .mount(
                 "/",
                 rocket::routes![
-                    crate::routes::root,
-                    crate::routes::ping,
-                    crate::routes::graphiql,
-                    crate::routes::get_graphql_handler,
-                    crate::routes::post_graphql_handler,
-                    crate::routes::site,
-                    crate::routes::logs
+                    crate::api_routes::root,
+                    crate::api_routes::ping,
+                    crate::api_routes::graphiql,
+                    crate::api_routes::get_graphql_handler,
+                    crate::api_routes::post_graphql_handler,
+                    crate::api_routes::site,
+                    crate::api_routes::logs
                 ],
             )
             .attach(options)
@@ -135,8 +136,9 @@ async fn fetch_ui(o: &Orchestrator) -> () {
     info!("Kraken-UI is now available at commit SHA: {}", sha);
 }
 
-// Deploys a new RabbitMQ instance to the local machine
-pub fn deploy_rabbit_instance(node: &GenericNode, o: &Orchestrator) -> Result<(), String> {
+/// Deploys a new RabbitMQ instance to the local machine
+/// TODO unbind this from the makefile
+pub async fn deploy_rabbit_instance(node: &GenericNode, o: &Orchestrator) -> Result<(), String> {
     match Command::new("make").arg("spinup-rabbit").output() {
         Ok(_) => {
             || -> () {
@@ -151,8 +153,14 @@ pub fn deploy_rabbit_instance(node: &GenericNode, o: &Orchestrator) -> Result<()
                 .unwrap();
             }();
             // TODO figure out how to be better- somehow, rabbit is not OK as soon as docker has spun up
-            std::thread::sleep(std::time::Duration::new(15, 0));
-            Ok(())
+            info!("Waiting for RabbitMQ server to spinup...");
+            match wait_for_good_healthcheck("http://localhost:15672", None).await {
+                true => {
+                    std::thread::sleep(std::time::Duration::new(1, 0));
+                    Ok(())
+                }
+                false => Err(String::from("Failed to satisfy healthcheck")),
+            }
         }
         Err(_) => Err(String::from("Failed to create rabbit instance")),
     }
@@ -237,7 +245,7 @@ pub async fn setup(node: &mut GenericNode, o: &mut Orchestrator) -> Result<(), S
     let ui = fetch_ui(o);
 
     // Establish RabbitMQ
-    if let Err(e) = deploy_rabbit_instance(&node, &o) {
+    if let Err(e) = deploy_rabbit_instance(&node, &o).await {
         warn!("{}", e);
         return Err(SetupFaliure::BadRabbit);
     }
