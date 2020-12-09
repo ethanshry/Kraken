@@ -42,9 +42,7 @@ async fn main() -> Result<(), ()> {
     dotenv::dotenv().ok();
     env_logger::init();
 
-    //let mut orchestrator_ip: Option<String> = network::find_orchestrator_on_lan().await;
-
-    let mut orchestrator_ip =
+    let orchestrator_ip =
         match &std::env::var("SHOULD_SCAN_NETWORK").unwrap_or_else(|_| "YES".into())[..] {
             "NO" => {
                 warn!("ENV is configured to skip network scan, this may not be desired behaviour");
@@ -54,7 +52,7 @@ async fn main() -> Result<(), ()> {
         };
 
     let node_mode = match &orchestrator_ip {
-        Some(ip) => {
+        Some(_) => {
             info!("Orchestrator detected, starting node as worker");
             NodeMode::WORKER
         }
@@ -68,7 +66,6 @@ async fn main() -> Result<(), ()> {
         "amqp://{}:5672",
         orchestrator_ip.unwrap_or(String::from("localhost"))
     );
-    //std::env::var("AMQP_ADDR").unwrap_or_else(|_| "amqp://localhost:5672".into());
 
     info!("rabbit addr will be {}", rabbit_addr);
 

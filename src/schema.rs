@@ -3,7 +3,6 @@ use crate::model::{
     ApplicationStatus, Deployment, Node, Orchestrator, Platform, Service, TemporalApplicationStatus,
 };
 use juniper::{FieldError, FieldResult};
-use std::convert::TryFrom;
 use std::time::{Duration, UNIX_EPOCH};
 use uuid::Uuid;
 
@@ -63,7 +62,6 @@ impl TemporalApplicationStatus {
         self.status.clone()
     }
     fn time(&self) -> i32 {
-        //u64::try_from(self.time).unwrap_or(0)
         self.time as i32
     }
 }

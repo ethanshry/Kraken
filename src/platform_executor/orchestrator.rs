@@ -233,8 +233,6 @@ pub async fn setup(node: &mut GenericNode, o: &mut Orchestrator) -> Result<(), S
 
     fs::create_dir_all("log").unwrap();
 
-    fs::create_dir_all("log").unwrap();
-
     // download site
     let ui = fetch_ui(o);
 
