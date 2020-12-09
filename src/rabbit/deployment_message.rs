@@ -21,7 +21,7 @@ impl DeploymentMessage {
     }
 
     pub fn update_message(&mut self, s: ApplicationStatus, descr: &str) {
-        self.deployment_status = s.to_owned();
+        self.deployment_status = s;
         self.deployment_status_description = descr.to_owned();
     }
 }
@@ -41,7 +41,7 @@ impl RabbitMessage<DeploymentMessage> for DeploymentMessage {
     fn deconstruct_message(packet_data: &Vec<u8>) -> (String, DeploymentMessage) {
         let res = Vec::from_iter(
             String::from_utf8_lossy(packet_data)
-                .split("|")
+                .split('|')
                 .map(|s| s.to_string()),
         );
 

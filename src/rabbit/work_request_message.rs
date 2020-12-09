@@ -49,7 +49,7 @@ impl WorkRequestMessage {
         priority: Option<i16>,
     ) -> WorkRequestMessage {
         WorkRequestMessage {
-            request_type: request_type,
+            request_type,
             deployment_id: match deployment_id {
                 Some(d) => Some(d.to_owned()),
                 None => None,
@@ -58,7 +58,7 @@ impl WorkRequestMessage {
                 Some(d) => Some(d.to_owned()),
                 None => None,
             },
-            priority: priority.clone(),
+            priority,
         }
     }
 }
@@ -94,7 +94,7 @@ impl RabbitMessage<WorkRequestMessage> for WorkRequestMessage {
     fn deconstruct_message(packet_data: &Vec<u8>) -> (String, WorkRequestMessage) {
         let res = Vec::from_iter(
             String::from_utf8_lossy(packet_data)
-                .split("|")
+                .split('|')
                 .map(|s| s.to_string()),
         );
 

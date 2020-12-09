@@ -1,4 +1,3 @@
-use juniper;
 use serde::{Deserialize, Serialize};
 use std::string::ToString; // for strum enum to string
 use std::time::SystemTime;
@@ -110,12 +109,12 @@ impl Node {
         ((self.ram_used as f64) / ((self.ram_free as f64) + (self.ram_used as f64))) as f64
     }
 
-    pub fn set_id(&mut self, id: &str) -> () {
+    pub fn set_id(&mut self, id: &str) {
         self.id = id.to_owned();
     }
 
     /// update the node values
-    pub fn update(&mut self, ram_free: u64, ram_used: u64, uptime: u64, load_avg_5: f32) -> () {
+    pub fn update(&mut self, ram_free: u64, ram_used: u64, uptime: u64, load_avg_5: f32) {
         self.ram_free = ram_free;
         self.ram_used = ram_used;
         self.uptime = uptime;
@@ -134,7 +133,7 @@ impl Node {
         _services: Option<Vec<Service>>,
     ) -> Node {
         // TODO find a safer way to do this
-        let n = Node::new(
+        Node::new(
             id,
             match model {
                 Some(m) => m,
@@ -156,35 +155,14 @@ impl Node {
                 Some(r) => r,
                 None => 0.0,
             },
-        );
-
-        /*
-        TODO rm (node coming from a message probably doesn't have apps or services)
-        if let Some(apps) = apps {
-            let app_iter = apps.into_iter();
-
-            while let Some(app) = app_iter.next() {
-                n.add_application_instance(&app);
-            }
-        }
-
-        if let Some(service) = apps {
-            let app_iter = apps.into_iter();
-
-            while let Some(app) = app_iter.next() {
-                n.add_application_instance(&app);
-            }
-        }
-        */
-
-        n
+        )
     }
 
-    pub fn add_service(&mut self, service: Service) -> () {
+    pub fn add_service(&mut self, service: Service) {
         self.services.push(service);
     }
 
-    pub fn add_application_instance(&mut self, app: &str) -> () {
+    pub fn add_application_instance(&mut self, app: &str) {
         self.application_instances.push(app.to_owned());
     }
 }
@@ -320,7 +298,7 @@ impl Deployment {
 
 impl Clone for Deployment {
     fn clone(&self) -> Self {
-        let d = Deployment {
+        Deployment {
             id: self.id.clone(),
             src_url: self.src_url.clone(),
             version: self.version.clone(),
@@ -330,14 +308,7 @@ impl Clone for Deployment {
             results_url: self.results_url.clone(),
             deployment_url: self.deployment_url.clone(),
             node: self.node.clone(),
-        };
-        /*
-        for i in self.node.iter() {
-            d.node.push(i.clone());
         }
-        */
-
-        d
     }
 }
 

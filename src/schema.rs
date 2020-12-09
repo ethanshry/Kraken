@@ -97,7 +97,7 @@ impl Deployment {
                 time: s
                     .1
                     .duration_since(UNIX_EPOCH)
-                    .unwrap_or(Duration::new(0, 0))
+                    .unwrap_or_else(|_| Duration::new(0, 0))
                     .as_secs(),
             });
         }
@@ -107,7 +107,7 @@ impl Deployment {
                 .status
                 .1
                 .duration_since(UNIX_EPOCH)
-                .unwrap_or(Duration::new(0, 0))
+                .unwrap_or_else(|_| Duration::new(0, 0))
                 .as_secs(),
         });
         statuses
@@ -199,7 +199,7 @@ impl Query {
             env!("CARGO_MANIFEST_DIR"),
             "log"
         ))
-        .unwrap_or(vec![])
+        .unwrap_or_else(|_| Vec::new())
         {
             let file_pieces: Vec<&str> = file.split('.').collect();
             if file_pieces[1] == "log" {

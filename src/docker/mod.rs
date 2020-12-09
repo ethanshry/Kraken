@@ -232,33 +232,31 @@ impl DockerBroker {
 
                     while let Some(result) = build_results.next().await {
                         if let Ok(stage) = result {
-                            match stage {
-                                bollard::service::CreateImageInfo {
-                                    id,
-                                    error,
-                                    status,
-                                    progress,
-                                    progress_detail,
-                                } => {
-                                    info!(
-                                        "{:?},{:?},{:?},{:?},{:?}",
-                                        id, error, status, progress, progress_detail
-                                    );
-                                    // TODO fix
-                                    // Why was I doing this?
-                                    // let data = str::replace(&id.unwrap(), "\n", "");
-                                    //let data = format!("{:?}", id);
-                                    let data = "";
-                                    if data.len() > 0 {
-                                        log.push(data.to_owned());
-                                    }
-                                } /*
-                                  _ => {
-                                      // TODO figure out what to do with other results
-                                      // BuildImageAux is called right before the final Stream message
-                                  }
-                                  */
+                            let bollard::service::CreateImageInfo {
+                                id,
+                                error,
+                                status,
+                                progress,
+                                progress_detail,
+                            } = stage;
+                            info!(
+                                "{:?},{:?},{:?},{:?},{:?}",
+                                id, error, status, progress, progress_detail
+                            );
+                            // TODO fix
+                            // Why was I doing this?
+                            // let data = str::replace(&id.unwrap(), "\n", "");
+                            //let data = format!("{:?}", id);
+                            let data = "";
+                            if !data.is_empty() {
+                                log.push(data.to_owned());
                             }
+                            /*
+                            _ => {
+                                // TODO figure out what to do with other results
+                                // BuildImageAux is called right before the final Stream message
+                            }
+                            */
                         } else {
                             // TODO figure out what to do with Err
                         }
@@ -268,7 +266,7 @@ impl DockerBroker {
                 .await;
                 match build_result {
                     Ok(_) => Ok(DockerImageBuildResult {
-                        log: log,
+                        log,
                         image_id: container_guid.clone(),
                     }),
                     Err(e) => {
@@ -311,7 +309,7 @@ impl DockerBroker {
 
         Ok(DockerImageBuildResult {
             log: vec![String::from("")],
-            image_id: container_guid.clone(),
+            image_id: container_guid,
         })
 
         //docker run -d --hostname my-rabbit --name rab -p 5672:5672 rabbitmq:3
@@ -345,7 +343,7 @@ impl DockerBroker {
             p.clone(),
             Some(vec![PortBinding {
                 host_ip: Some(String::from("0.0.0.0")),
-                host_port: Some(String::from(format!("{}", port))),
+                host_port: Some(format!("{}", port)),
             }]),
         );
 
@@ -379,9 +377,9 @@ impl DockerBroker {
                 .conn
                 .start_container(&response.id, None::<StartContainerOptions<String>>)
                 .await;
-            if let Ok(_) = res {
+            if res.is_ok() {
                 info!("Docker started container {}", response.id);
-                return Ok(String::from(response.id));
+                return Ok(response.id);
             }
             return Err(());
         }
@@ -393,17 +391,16 @@ impl DockerBroker {
     /// # Arguments
     ///
     /// * `container_id` - The id of the container to kill
-    pub async fn stop_container(&self, container_id: &str) -> () {
+    pub async fn stop_container(&self, container_id: &str) {
         self.conn
             .stop_container(container_id, Some(StopContainerOptions { t: 10 }))
             .await
             .unwrap();
         info!("Killing docker container {}", container_id);
-        ()
     }
 
     // TODO figure out what stats are actually useful
-    pub async fn get_container_stats(&self, _container_id: &str) -> () {}
+    pub async fn get_container_stats(&self, _container_id: &str) {}
 
     /// Remove unused images from docker
     ///
@@ -418,20 +415,20 @@ impl DockerBroker {
     /// let docker = DockerBroker::new();
     /// docker.prune_images("10m"); // prune images more than 10 min old
     /// ```
-    pub async fn prune_images(&self, keep_if_created_before_time: Option<&str>) -> () {
+    pub async fn prune_images(&self, keep_if_created_before_time: Option<&str>) {
         let mut filters = HashMap::new();
         filters.insert("until", vec![keep_if_created_before_time.unwrap_or("1h")]); // keep images created < until ago
         filters.insert("dangling", vec!["false"]); // remove all images that are not running
 
         let out = self
             .conn
-            .prune_images(Some(PruneImagesOptions { filters: filters }))
+            .prune_images(Some(PruneImagesOptions { filters }))
             .await
             .unwrap();
 
         info!(
             "Docker prune removed {} images, reclaimed {} bytes",
-            out.images_deleted.unwrap_or(vec![]).len(), // TODO verify if this is actually correct
+            out.images_deleted.unwrap_or_else(|| Vec::new()).len(), // TODO verify if this is actually correct
             out.space_reclaimed.unwrap_or(0)
         );
     }
@@ -449,22 +446,21 @@ impl DockerBroker {
     /// let docker = DockerBroker::new();
     /// docker.prune_containers("10m"); // prune containers more than 10 min old
     /// ```
-    pub async fn prune_containers(&self, keep_if_created_before_time: Option<&str>) -> () {
+    pub async fn prune_containers(&self, keep_if_created_before_time: Option<&str>) {
         let mut filters = HashMap::new();
         filters.insert("until", vec![keep_if_created_before_time.unwrap_or("1h")]); // keep images created < until ago
 
         let out = self
             .conn
-            .prune_containers(Some(PruneContainersOptions { filters: filters }))
+            .prune_containers(Some(PruneContainersOptions { filters }))
             .await
             .unwrap();
 
         info!(
             "Docker prune removed {} images, reclaimed {} bytes",
-            out.containers_deleted.unwrap_or(vec![]).len(), // TODO verify if this is actually correct
+            out.containers_deleted.unwrap_or_else(|| Vec::new()).len(), // TODO verify if this is actually correct
             out.space_reclaimed.unwrap_or(0)
         );
-        ()
     }
 
     /// Removes unused containers and images from docker

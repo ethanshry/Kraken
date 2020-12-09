@@ -68,7 +68,7 @@ pub async fn setup(node: &mut GenericNode, w: &mut Worker) -> Result<(), SetupFa
             let (_node, message) = WorkRequestMessage::deconstruct_message(&data);
             info!("Recieved Message on {}'s Work Queue", &system_uuid);
             work_queue.add(message).unwrap();
-            return ();
+            return;
         };
         let system_uuid = node.system_id.clone();
         tokio::spawn(async move {
@@ -94,7 +94,7 @@ pub async fn execute(node: &mut GenericNode, w: &mut Worker) -> Result<(), TaskF
     // If more work needs to be completed, execute should be called again
     let arc = w.work_requests.clone();
     let mut work_queue = arc.lock().unwrap();
-    if let Ok(_) = work_queue.peek() {
+    if work_queue.peek().is_ok() {
         let task: WorkRequestMessage = work_queue.remove().unwrap();
         info!("{:?}", task);
 
@@ -133,12 +133,11 @@ pub async fn execute(node: &mut GenericNode, w: &mut Worker) -> Result<(), TaskF
     drop(work_queue);
 
     let mut nodes_to_remove = vec![];
-    let mut index: usize = 0;
-    for d in node.deployments.iter_mut() {
+    for (index, d) in node.deployments.iter_mut().enumerate() {
         // if more than a second has passed, check for logs
         if d.last_log_time
             .elapsed()
-            .unwrap_or(std::time::Duration::new(0, 0))
+            .unwrap_or_else(|_| std::time::Duration::new(0, 0))
             .as_secs()
             > 1
         {
@@ -147,7 +146,7 @@ pub async fn execute(node: &mut GenericNode, w: &mut Worker) -> Result<(), TaskF
             if let Some(docker) = docker {
                 let logs = docker.get_logs(&d.deployment_id, d.last_log_time).await;
                 d.update_log_time();
-                if logs.len() > 0 {
+                if !logs.is_empty() {
                     let publisher = node.broker.as_ref().unwrap().get_channel().await;
                     let mut msg = LogMessage::new(&d.deployment_id);
                     msg.update_message(&logs.join(""));
@@ -156,10 +155,9 @@ pub async fn execute(node: &mut GenericNode, w: &mut Worker) -> Result<(), TaskF
             }
         }
 
-        if let Err(_) = d.status {
+        if d.status.is_err() {
             nodes_to_remove.push(index);
         }
-        index += 1;
     }
 
     nodes_to_remove.reverse();
@@ -178,7 +176,7 @@ pub async fn handle_deployment(
     git_uri: &str,
     id: &str,
 ) -> Result<DeploymentInfo, DeploymentInfo> {
-    let container_guid = id.clone();
+    let container_guid = String::from(id);
 
     let publisher = broker.get_channel().await;
 
@@ -206,7 +204,7 @@ pub async fn handle_deployment(
     // Inject the proper dockerfile into the project
     // TODO read configuration information from toml file
 
-    let mut deployment_info = DeploymentInfo::new(container_guid, "", false);
+    let mut deployment_info = DeploymentInfo::new(&container_guid, "", false);
 
     let deployment_config = match crate::deployment::config::get_config_for_path(&format!(
         "{}/shipwreck.toml",
@@ -216,7 +214,7 @@ pub async fn handle_deployment(
         None => {
             msg.update_message(
                 ApplicationStatus::Errored,
-                &format!("shipwreck.toml not detected or incompatible format, please ensure your file is compliant"),
+                &"shipwreck.toml not detected or incompatible format, please ensure your file is compliant",
             );
             msg.send(&publisher, QueueLabel::Deployment.as_str()).await;
             return Err(deployment_info);
@@ -235,7 +233,7 @@ pub async fn handle_deployment(
         _ => {
             msg.update_message(
                 ApplicationStatus::Errored,
-                &format!("shipwreck.toml specified an unsupported language. check the Kraken-UI for supported languages"),
+                &"shipwreck.toml specified an unsupported language. check the Kraken-UI for supported languages",
             );
             msg.send(&publisher, QueueLabel::Deployment.as_str()).await;
             return Err(deployment_info);
@@ -280,7 +278,7 @@ pub async fn handle_deployment(
 
             if let Ok(id) = ids {
                 info!("Docker container started for {} with id {}", git_uri, id);
-                msg.update_message(ApplicationStatus::Running, &format!("{}", id));
+                msg.update_message(ApplicationStatus::Running, &id);
                 msg.send(&publisher, QueueLabel::Deployment.as_str()).await;
             } else {
                 msg.update_message(ApplicationStatus::Errored, "Error in deployment");
@@ -303,7 +301,7 @@ pub async fn kill_deployment(
     broker: &RabbitBroker,
     container_id: &str,
 ) -> Result<String, ()> {
-    let container_guid = container_id.clone();
+    let container_guid = String::from(container_id);
 
     let publisher = broker.get_channel().await;
 

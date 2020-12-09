@@ -78,7 +78,7 @@ pub async fn handle_deployment(
 
             if let Ok(id) = ids {
                 info!("Docker container started for {} with id {}", git_uri, id);
-                msg.update_message(ApplicationStatus::Running, &format!("{}", id));
+                msg.update_message(ApplicationStatus::Running, &id);
                 msg.send(&publisher, QueueLabel::Deployment.as_str()).await;
             } else {
                 msg.update_message(ApplicationStatus::Errored, "Error in deployment");

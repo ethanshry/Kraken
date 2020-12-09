@@ -26,14 +26,11 @@ pub fn load_or_create_platform(db: &mut Database) -> Platform {
         Ok(contents) => serde_json::from_str(&contents).unwrap(),
         Err(_) => Platform::new(
             &vec![],
-            &Orchestrator::new(
-                OrchestratorInterface::new(
-                    Some(String::from("https://github.com/ethanshry/Kraken-UI.git")),
-                    None,
-                    ApplicationStatus::Errored,
-                )
-                .to_owned(),
-            ),
+            &Orchestrator::new(OrchestratorInterface::new(
+                Some(String::from("https://github.com/ethanshry/Kraken-UI.git")),
+                None,
+                ApplicationStatus::Errored,
+            )),
             &vec![],
         ),
     };
@@ -48,5 +45,5 @@ pub fn load_or_create_platform(db: &mut Database) -> Platform {
         db.insert_deployment(&deployment);
     }
 
-    return platform;
+    platform
 }

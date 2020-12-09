@@ -45,7 +45,7 @@ pub fn get_config_for_path(p: &str) -> Option<Config> {
 
             let data: Config = toml::from_str(&file_data).unwrap();
             println!("{:?}", data);
-            return Some(data);
+            Some(data)
         }
     }
 }

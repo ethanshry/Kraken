@@ -10,7 +10,6 @@ const MAX_SUBNET_ADDR: u8 = 70;
 pub async fn scan_network_for_machines(port: u16) -> Vec<String> {
     let mut subnet_addr: Option<[u8; 3]> = None;
     'ifaces: for iface in datalink::interfaces() {
-        //println!("{:?}", iface.ips);
         for ip in iface.ips {
             if let IpNetwork::V4(addr) = ip {
                 if addr.ip().to_string() != "127.0.0.1" {
@@ -20,16 +19,13 @@ pub async fn scan_network_for_machines(port: u16) -> Vec<String> {
 
                     let octets: [u8; 4] = addr.ip().octets();
 
-                    for x in 0..3 {
-                        subnet_addr_vec[x] = octets[x];
-                    }
+                    subnet_addr_vec[..3].clone_from_slice(&octets[..3]);
 
                     subnet_addr = Some(subnet_addr_vec);
 
                     break 'ifaces;
                 }
             }
-            break;
         }
     }
 
@@ -44,14 +40,14 @@ pub async fn scan_network_for_machines(port: u16) -> Vec<String> {
             let mut open_addrs = vec![];
             for addr in addrs_to_scan.iter() {
                 info!("Scanning network address {}", addr);
-                match reqwest::Client::new()
+                if reqwest::Client::new()
                     .get(&format!("http://{}:{}/ping", addr, port))
                     .timeout(std::time::Duration::new(0, 500000000))
                     .send()
                     .await
+                    .is_ok()
                 {
-                    Ok(_) => open_addrs.push(addr.to_string()),
-                    Err(_) => {}
+                    open_addrs.push(addr.to_string());
                 }
             }
 
@@ -64,23 +60,20 @@ pub async fn scan_network_for_machines(port: u16) -> Vec<String> {
 pub async fn find_orchestrator_on_lan() -> Option<String> {
     // TODO drive port from ENV or config or something
     let machines = scan_network_for_machines(8000).await; // Look for Rocket server
-    if machines.len() != 0 {
-        return Some(machines.get(0).unwrap().to_string());
+    if !machines.is_empty() {
+        return Some(machines[0].to_string());
     }
     return None;
 }
 
 /// Tries to hit a url, and returns success (true) or faliure (false)
 pub async fn healthcheck(url: &str) -> bool {
-    match reqwest::Client::new()
-        .get(&format!("{}", url))
+    reqwest::Client::new()
+        .get(url)
         .timeout(std::time::Duration::new(0, 1000000000))
         .send()
         .await
-    {
-        Ok(_) => true,
-        Err(_) => false,
-    }
+        .is_ok()
 }
 
 /// Continually retries healthcheck until is accepted,

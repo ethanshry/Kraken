@@ -65,10 +65,10 @@ impl GitApi {
         if url_parts.len() != 3 {
             return None;
         }
-        return Some(GitUrl {
+        Some(GitUrl {
             user: url_parts[1].to_string(),
             repo: url_parts[2].to_string(),
-        });
+        })
     }
 
     /// Grabs the most recent commits for all branches in a given repo

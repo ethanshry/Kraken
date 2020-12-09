@@ -8,16 +8,6 @@
 
 #[macro_use]
 extern crate juniper;
-/* TODO rm
-extern crate fs_extra;
-extern crate queues;
-extern crate rocket;
-extern crate rocket_cors;
-extern crate serde;
-extern crate strum;
-extern crate strum_macros;
-extern crate tokio;
-*/
 
 mod api_routes;
 mod db;
@@ -36,15 +26,7 @@ mod utils;
 mod worker;
 
 use log::{error, info, warn};
-use platform_executor::{GenericNode, TaskFaliure};
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum NodeMode {
-    /// A node only responsible for handling deployments
-    WORKER,
-    /// A node which both coordinates the platform and handles deployments
-    ORCHESTRATOR,
-}
+use platform_executor::{GenericNode, NodeMode, TaskFaliure};
 
 #[tokio::main]
 async fn main() -> Result<(), ()> {
@@ -73,7 +55,7 @@ async fn main() -> Result<(), ()> {
 
     let rabbit_addr: String = format!(
         "amqp://{}:5672",
-        orchestrator_ip.unwrap_or(String::from("localhost"))
+        orchestrator_ip.unwrap_or_else(|| String::from("localhost"))
     );
 
     info!("rabbit addr will be {}", rabbit_addr);

@@ -6,6 +6,15 @@ use async_trait::async_trait;
 use std::time::{Duration, SystemTime};
 use sysinfo::SystemExt;
 
+/// The Type of the Kraken node, defines which functions must be created.
+#[derive(Debug, Clone, PartialEq)]
+pub enum NodeMode {
+    /// A node only responsible for handling deployments
+    WORKER,
+    /// A node which both coordinates the platform and handles deployments
+    ORCHESTRATOR,
+}
+
 #[derive(Debug)]
 pub enum SetupFaliure {
     NoPlatform, // Could not connect to existing platform

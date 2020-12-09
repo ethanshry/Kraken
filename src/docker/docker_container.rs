@@ -38,14 +38,14 @@ impl DockerContainer {
         status: Option<String>,
     ) -> DockerContainer {
         DockerContainer {
-            id: id,
-            name: name,
-            image: image,
-            image_id: image_id,
-            created: created,
-            ports: ports,
-            state: state,
-            status: status,
+            id,
+            name,
+            image,
+            image_id,
+            created,
+            ports,
+            state,
+            status,
         }
     }
 }

@@ -5,7 +5,8 @@ use std::io::prelude::*;
 
 /// Copies a directory's contents to crate/static/
 /// Will persist subdirectory structure
-pub fn copy_dir_contents_to_static(dir: &str) -> () {
+pub fn copy_dir_contents_to_static(dir: &str) {
+    // TODO clean this all up
     match fs::remove_dir_all("static") {
         Ok(_) => true,
         Err(_) => false,
@@ -19,7 +20,7 @@ pub fn copy_dir_contents_to_static(dir: &str) -> () {
         for item in fs::read_dir(dir).unwrap() {
             let path = &item.unwrap().path();
             if path.is_dir() {
-                let folder_name = path.to_str().unwrap().split("/").last().unwrap();
+                let folder_name = path.to_str().unwrap().split('/').last().unwrap();
                 copy_dir_with_parent(
                     format!("{}/{}", root, folder_name).as_str(),
                     path.to_str().unwrap(),
@@ -36,7 +37,7 @@ pub fn copy_dir_contents_to_static(dir: &str) -> () {
 /// Copies an individual file to the crate/static directory
 /// Leave file_path empty to coppy directly to the static directory
 pub fn copy_file_to_static(target_subdir: &str, file_path: &str) -> Result<u64, std::io::Error> {
-    let item_name = file_path.split("/").last().unwrap();
+    let item_name = file_path.split('/').last().unwrap();
     match target_subdir {
         "" => fs::copy(file_path, format!("static/{}", item_name)),
         _ => fs::copy(file_path, format!("static/{}/{}", target_subdir, item_name)),
@@ -65,10 +66,7 @@ pub fn copy_dockerfile_to_dir(dockerfile_ref: &str, file_path: &str) -> bool {
 /// Returns true if directory existed and was removed
 /// Returns false if directory did not exist
 pub fn clear_tmp() -> bool {
-    match fs::remove_dir_all("tmp") {
-        Ok(_) => true,
-        Err(_) => false,
-    }
+    fs::remove_dir_all("tmp").is_ok()
 }
 
 pub fn append_to_file(file_path: &str, data: &str) {
@@ -94,7 +92,7 @@ pub fn get_all_files_in_folder(path: &str) -> Result<Vec<String>, ()> {
             let results = e
                 .map(|res| res.map(|e| format!("{}", e.path().display())))
                 .collect::<Result<Vec<_>, io::Error>>()
-                .unwrap_or(vec![]);
+                .unwrap_or_else(|_| Vec::new());
             Ok(results)
         }
         Err(_) => Err(()),

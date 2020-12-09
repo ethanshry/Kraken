@@ -36,7 +36,7 @@ pub fn create_api_server(o: &Orchestrator) -> tokio::task::JoinHandle<()> {
     let db_ref = o.db_ref.clone();
 
     // launch rocket
-    let server = tokio::spawn(async move {
+    tokio::spawn(async move {
         rocket::ignite()
             .manage(ManagedDatabase::new(db_ref))
             .manage(crate::api_routes::Schema::new(Query, Mutation))
@@ -54,12 +54,11 @@ pub fn create_api_server(o: &Orchestrator) -> tokio::task::JoinHandle<()> {
             )
             .attach(options)
             .launch();
-    });
-    server
+    })
 }
 
 /// Pulls the Kraken-UI to be served by the API Server
-async fn fetch_ui(o: &Orchestrator) -> () {
+async fn fetch_ui(o: &Orchestrator) {
     if &std::env::var("SHOULD_CLONE_UI").unwrap_or_else(|_| "YES".into())[..] == "NO" {
         warn!(
             "ENV is configured to skip UI download and compile, this may not be desired behaviour"
@@ -152,7 +151,6 @@ pub async fn deploy_rabbit_instance(node: &GenericNode, o: &Orchestrator) -> Res
                 ))
                 .unwrap();
             }();
-            // TODO figure out how to be better- somehow, rabbit is not OK as soon as docker has spun up
             info!("Waiting for RabbitMQ server to spinup...");
             match wait_for_good_healthcheck("http://localhost:15672", None).await {
                 true => {
@@ -193,7 +191,7 @@ pub async fn validate_deployment(git_url: &str) -> Result<String, ()> {
                                 // TODO fix so any branch is accepted
                                 // Allow legacy 'master' branches
                                 if c.name == "master" || c.name == "main" {
-                                    return Ok(c.commit.sha.to_string());
+                                    return Ok(c.commit.sha);
                                 }
                             }
                             Err(())
@@ -290,7 +288,7 @@ pub async fn setup(node: &mut GenericNode, o: &mut Orchestrator) -> Result<(), S
             // TODO clean up all this unsafe unwrapping
             let mut db = arc.lock().unwrap();
             if let Some(n) = db.get_node(&node) {
-                let mut new_node = n.clone();
+                let mut new_node = n;
                 new_node.set_id(&node);
                 new_node.update(
                     message.ram_free,
@@ -312,7 +310,6 @@ pub async fn setup(node: &mut GenericNode, o: &mut Orchestrator) -> Result<(), S
                 );
                 db.insert_node(&new_node);
             }
-            return ();
         };
         tokio::spawn(async move {
             let broker = match crate::platform_executor::connect_to_rabbit_instance(&addr).await {
@@ -361,8 +358,6 @@ pub async fn setup(node: &mut GenericNode, o: &mut Orchestrator) -> Result<(), S
                     message.deployment_status_description);
                 }
             }
-
-            return ();
         };
 
         tokio::spawn(async move {
@@ -387,7 +382,6 @@ pub async fn setup(node: &mut GenericNode, o: &mut Orchestrator) -> Result<(), S
         let handler = move |data: Vec<u8>| {
             let (deployment_id, message) = LogMessage::deconstruct_message(&data);
             append_to_file(&format!("log/{}.log", &deployment_id), &message.message);
-            return ();
         };
         tokio::spawn(async move {
             let broker = match crate::platform_executor::connect_to_rabbit_instance(&addr).await {
