@@ -1,3 +1,8 @@
+//! Functions related to the local network
+//! - subnet scanning
+//! - healthchecks
+//! - etc
+
 // Maybe look into this for ideas for safety
 // https://github.com/babariviere/port_scanner-rs/blob/master/src/lib.rs
 use log::info;
@@ -36,7 +41,7 @@ pub async fn scan_network_for_machines(port: u16) -> Vec<String> {
             for x in MIN_SUBNET_ADDR..MAX_SUBNET_ADDR {
                 addrs_to_scan.push(format!("{}.{}.{}.{}", subnet[0], subnet[1], subnet[2], x));
             }
-            // TODO maybe look into https://github.com/rayon-rs/rayon to make this better
+            // TODO maybe look into https://github.com/rayon-rs/rayon to make this better : see #45
             let mut open_addrs = vec![];
             for addr in addrs_to_scan.iter() {
                 info!("Scanning network address {}", addr);

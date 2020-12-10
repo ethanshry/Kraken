@@ -132,7 +132,8 @@ impl Node {
         _apps: Option<Vec<String>>,
         _services: Option<Vec<Service>>,
     ) -> Node {
-        // TODO find a safer way to do this
+        // TODO find a cleaner way to do this
+        // Would like to model.unwrap_or("placeholder") or similiar
         Node::new(
             id,
             match model {
@@ -283,13 +284,6 @@ impl Deployment {
         self.status_history.push(self.status.clone());
         self.status = (new_status, SystemTime::now());
     }
-
-    // TODO modify to update_instance
-    /*
-    pub fn add_instance(&mut self, instance: ApplicationInstance) {
-        self.instances.push(Some(instance));
-    }
-    */
 
     pub fn remove_instance(&mut self, _instance_id: &str) {
         // TODO complete

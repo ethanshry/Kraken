@@ -283,7 +283,6 @@ impl DockerBroker {
     }
 
     /// Builds a docker image from a local project folder
-    /// TODO remove this options? not sure
     ///
     /// This will create a `/tmp/containers` directory if it doesn't exist to store a tar of the project before building the image.
     /// # Arguments
@@ -372,7 +371,6 @@ impl DockerBroker {
 
         if let Ok(response) = res {
             info!("Docker built container {}", response.id);
-            // TODO why is this not Ok? Ok(String::from(response.id))
             let res = self
                 .conn
                 .start_container(&response.id, None::<StartContainerOptions<String>>)
@@ -399,7 +397,7 @@ impl DockerBroker {
         info!("Killing docker container {}", container_id);
     }
 
-    // TODO figure out what stats are actually useful
+    // TODO figure out what stats are actually useful: See #44
     pub async fn get_container_stats(&self, _container_id: &str) {}
 
     /// Remove unused images from docker
@@ -428,7 +426,7 @@ impl DockerBroker {
 
         info!(
             "Docker prune removed {} images, reclaimed {} bytes",
-            out.images_deleted.unwrap_or_else(|| Vec::new()).len(), // TODO verify if this is actually correct
+            out.images_deleted.unwrap_or_else(|| Vec::new()).len(),
             out.space_reclaimed.unwrap_or(0)
         );
     }
@@ -458,7 +456,7 @@ impl DockerBroker {
 
         info!(
             "Docker prune removed {} images, reclaimed {} bytes",
-            out.containers_deleted.unwrap_or_else(|| Vec::new()).len(), // TODO verify if this is actually correct
+            out.containers_deleted.unwrap_or_else(|| Vec::new()).len(),
             out.space_reclaimed.unwrap_or(0)
         );
     }
