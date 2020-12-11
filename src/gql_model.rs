@@ -1,3 +1,5 @@
+//! Defines the model and resolvers for much of the GraphQL Schema
+
 use serde::{Deserialize, Serialize};
 use std::string::ToString; // for strum enum to string
 use std::time::SystemTime;
@@ -243,6 +245,7 @@ impl Orchestrator {
     }
 }
 
+/// Information related to a specific Deployment
 #[derive(Serialize, Debug, Deserialize)]
 pub struct Deployment {
     pub id: String,
@@ -306,6 +309,7 @@ impl Clone for Deployment {
     }
 }
 
+/// Information related to a specific application instance
 #[derive(Serialize, Deserialize, Debug, Clone, juniper::GraphQLObject)]
 #[graphql(description = "A Service installed on the device to support the platform")]
 pub struct ApplicationInstance {
@@ -335,6 +339,7 @@ impl ApplicationInstance {
     }
 }
 
+/// Data about the platform
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Platform {
     pub deployments: Vec<Deployment>,

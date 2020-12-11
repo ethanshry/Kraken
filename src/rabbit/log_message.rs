@@ -1,3 +1,4 @@
+//! A message containing log data from an active deployment
 use crate::rabbit::RabbitMessage;
 
 use std::iter::FromIterator;

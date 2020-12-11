@@ -1,8 +1,8 @@
+//! A message containing status information for a device on the platform
 use crate::rabbit::RabbitMessage;
 
 use std::iter::FromIterator;
 
-// TODO implement format
 pub struct SysinfoMessage {
     pub system_identifier: String,
     pub ram_free: u64,

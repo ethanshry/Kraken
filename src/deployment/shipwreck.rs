@@ -1,14 +1,17 @@
+//! Specification and validation for the shipwreck.toml file
+//!
 use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::io::prelude::*;
 
-/// Struct used to define the shipwreck.toml file in a requested deployment's root
+/// Defines the sections in the shipwreck.toml file in a requested deployment's root
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Config {
     pub app: AppConfig,
     pub config: DeploymentConfig,
 }
 
+/// Data required to configure the specifics of a deployment
 #[derive(Serialize, Deserialize, Debug)]
 pub struct DeploymentConfig {
     pub lang: String,
@@ -17,6 +20,7 @@ pub struct DeploymentConfig {
     pub port: i64,
 }
 
+/// Metadata pertaining to the application (not required for the actual deployment)
 #[derive(Serialize, Deserialize, Debug)]
 pub struct AppConfig {
     pub name: String,

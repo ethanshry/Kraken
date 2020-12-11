@@ -1,9 +1,12 @@
+//! Misc utility functions
+
 use crate::db::Database;
-use crate::model::{ApplicationStatus, Orchestrator, OrchestratorInterface, Platform};
+use crate::gql_model::{ApplicationStatus, Orchestrator, OrchestratorInterface, Platform};
 use std::fs;
 use std::io::Write;
 use uuid::Uuid;
 
+/// Pulls the systemId from the id.txt file, if one exists
 pub fn get_system_id() -> String {
     return match fs::read_to_string("id.txt") {
         Ok(contents) => {
@@ -21,6 +24,7 @@ pub fn get_system_id() -> String {
     };
 }
 
+/// Attempts to load a local platform configuration file if it exists, or creates a new one if it does not
 pub fn load_or_create_platform(db: &mut Database) -> Platform {
     let platform = match fs::read_to_string("platform.json") {
         Ok(contents) => serde_json::from_str(&contents).unwrap(),

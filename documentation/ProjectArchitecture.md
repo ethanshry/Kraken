@@ -2,14 +2,154 @@
 
 ## Overview
 
-Kraken is designed to provide a platform of devices to which either persistant applications can be deployed to as a LAN-based development sandbox, or for one-off jobs to be processed either manually or automatically (i.e. running a script to scrape twitter data via the platform instead of your primary development machine, or automatically running unit tests on a repository whenever a github branch is updated).
+The Kraken App Deployment Platform is a loose collection of devices all running the Kraken agent. Each device is given a specific set of tasks to perform in order to provide the full set of platform functionalities.
 
-## Installaton, Configuration, and Updates
+The Kraken agent is written in Rust. It provides the backend worker and orchestrator features to support the platform, which are covered in more detail in [Workers and Orchestration](##Workers-and-Orchestration). The ways the devices communicate with each other are covered in [Communication](##Communication). Finally, the specifics of how deployments are handled are covered in [Deployments](##Deployments).
 
-## Nodes and Orchestration
+The frontend experience is a React+AntDesign project, which lives [here](https://github.com/ethanshry/Kraken-UI).
+
+## Installaton and Updates
+
+NOTE: This process is not currently supported by the platform (WIP).
+
+The installer will create a bash script that runs on computer boot. This installation will check for the newest stable version of the platform, download it if possible, and start it up.
+
+The intention would be to use a simple `curl [installer_script] | bash` command to get the project installed and running.
+
+The installer will create a local file to record the most recently downloaded commit, which is how it will detect whether the current version of the project is out of date or not. Then it is a simple matter of installing required dependencies, and downloading/compiling the project's zip. Because the commit will be validated every time the system reboots, updates will be handled automatically in this way.
+
+## Project Initialization
+
+The Kraken Agent performs a specific set of steps to initialize and execute. This process follows the following rough outline:
+
+- Scan the network for an orchestration node. If one exists, then start in worker mode. Otherwise start in orchestrator mode.
+- If we are in Orchestrator mode, setup orchestration features (i.e. RabbitMQ, REST/GQL server, etc)
+- Setup worker features (RabbitMQ queues, etc)
+
+Then the execution loop is incredibly simple:
+
+- If we are an orchestrator, perform an iteration of orchestration features
+- Perform an iteration of worker features
+
+If we can boil down this process to its simplest form, it would look something like this:
+
+```rust
+// Note code is in no way valid, and should just be viewed as psuedocode with a rust flair
+async fn main(){
+
+    let node_mode = match network::find_orchestrator_on_lan().await {
+        Some(_) => {
+            NodeMode::WORKER
+        }
+        None => {
+            NodeMode::ORCHESTRATOR
+        }
+    };
+
+    if node_mode == NodeMode::ORCHESTRATOR {
+
+        let mut orchestrator = platform_executor::orchestrator::Orchestrator::new();
+        platform_executor::orchestrator::setup(&mut node, &mut orchestrator).await
+
+        let mut worker = platform_executor::worker::Worker::new();
+        platform_executor::worker::setup(&mut node, &mut worker).await;
+
+    } else {
+
+        let mut worker = platform_executor::worker::Worker::new();
+        platform_executor::worker::setup(&mut node, &mut worker).await;
+
+    }
+
+    loop {
+
+        if node_mode == NodeMode::ORCHESTRATOR {
+            platform_executor::orchestrator::execute(&node, &orchestrator).await
+        }
+
+        platform_executor::worker::execute(&mut node, &mut worker).await
+    }
+}
+```
+
+However, this `loop` process is not entirely linear. RabbitMQ messages are handled and consumed asyncronously, as well as HTTP and GQL requests for the orchestrator, so typically the work an orchestrator or worker has to do involves checking to see what has changed in the state of their local databses/deployments, and reacting to them.
+
+## Workers and Orchestration
+
+There are a variety of features which a Kraken agent must perform. Broadly speaking, these fall into two categories: features required of a Worker (like managing deployments) and features required by an orchestrator (storing information about the state of all nodes on the platform).
+
+![platform communication](../images/platform_node_roles.png)
+
+Therefore you can think of every device as filling at least one, and possibly two roles. Every device is a worker device. Worker devices must do the following:
+
+- Report their system statistics
+- Manage any requests for local deployments (including updates, teardowns, and faliures)
+- Forward logs of local deployments to the orchestrator
+- Ensure they have a valid connection to a platform in the case of orchestrator or critical service faliure
+- Serve as a rollover canidate in the case of orchestrator faliure. This might include being a backup device for platform data
+
+One node on the network, the orchestrator, has an additional set of features. The orchestrator must:
+
+- Provide an HTTP server to allow other agents to discover the platform, and provide the platform UI experience
+- Provide a GQL server to provide data for the UI experience
+- Maintain logs for all deployments
+- Coordinate requests from the UI experience (i.e. deployment, teardown, update), and distribute those requests to workers
+- Monitor the platform for deployment/node faliure
+- Ensure critical platform services exist to allow the platform to function (i.e. a RabbitMQ instance)
+
+These functions are broken down in their respective files in the `crate::platform_executor` module. Each role adheres to the following trait
+
+```rust
+trait ExecutionNode {
+    async fn setup(&self) -> Result<(), SetupFaliure>;
+    async fn execute(&self) -> Result<(), TaskFaliure>;
+}
+```
+
+This allows for the simple execution process- any function group will have setup called on it once, and then execute repeatedly so long as the application continues to run.
+
+## Communication
+
+Communication between entities on the platform is multi-modal.
+
+![platform communication](../images/platform_communication.png)
+
+The first communication within the platform is the node-node communication. When a new agent is initialized, it must scan the LAN for an http server to determine if an orchestrator already exists (i.e. it should attach itself to an exsiting network, or create a new one). Additionally the orchestrator might ping a worker to determine if a deployment has been succesful. Outside of this basic communication, all other node-node communication happens via a RabbitMQ instance. Nodes set up a variety of queues to recieve work from the orchestrator, and report on their status.
+
+All communication with RabbitMQ is handled via the `crate::rabbit::RabbitBroker` struct, which is itself a wrapper around featurs from the `lapin` crate. `RabbitBroker` handles establishing connections with the RabbitMQ service. The `RabbitMessage` trait handles the data sent over RabbitMQ more directly.
+
+```rust
+pub trait RabbitMessage<T> {
+    fn build_message(&self) -> Vec<u8>;
+    fn deconstruct_message(packet_data: &Vec<u8>) -> (String, T);
+    async fn send(&self, channel: &lapin::Channel, tag: &str) -> bool
+}
+```
+
+Essentially, implementors of this Trait must define a build/deconstruct interface for their messages, which allows tighter constraint on the message schema. In general, we restrict the types of messages in a single queue to a single type, which means that consumers of that queue know what type of message to expect and therefore how to decode it.
+
+An overview of the channels defined can be found here.
+
+Additionally, the Orchestration node provides a GQL/REST interface for the UI. The REST interface is dead simple:
+
+| Route               | Description                                                 |
+| ------------------- | ----------------------------------------------------------- |
+| /                   | Redirect to /index.html                                     |
+| /ping               | Allows health check of Orchestrator                         |
+| /graphql, /graphiql | Standard /graphql /graphiql functionality, powers UI data   |
+| /log/<log_id>       | Provides access to deployment log files                     |
+| /<path..>           | Provides access to UI bundle files, and other images/assets |
+
+The schema for the GQL interface can be examined in depth when the platform is running via the `/graphiql` endpoint.
 
 ## Platform Services
 
+This is also a work in progress, see [#47](https://github.com/ethanshry/Kraken/issues/47).
+
 ## Platform Resilliancy
+
+At this point, there is no platform resilliancy. In fact, should anything bad happen, it is highly likely the whole thing will just fall down like a tower of cards.
+
+Ideally, this will be fixed in the next iteration, and faliures will lead to re-deployments and rollover processes.
 
 ## Deployments

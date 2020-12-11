@@ -15,18 +15,17 @@ mod deployment;
 mod docker;
 mod file_utils;
 mod git_utils;
-mod gitapi;
-mod model;
+mod github_api;
+mod gql_model;
+mod gql_schema;
 mod network;
 mod platform_executor;
 mod rabbit;
-mod schema;
 mod testing;
 mod utils;
-mod worker;
 
 use log::{error, info, warn};
-use platform_executor::{GenericNode, NodeMode, TaskFaliure};
+use platform_executor::{ExecuteFaliure, GenericNode, NodeMode};
 
 #[tokio::main]
 async fn main() -> Result<(), ()> {
@@ -91,6 +90,7 @@ async fn main() -> Result<(), ()> {
             .unwrap();
     }
 
+    // TODO remove for final
     testing::setup_experiment(&mut node, &mut orchestrator).await;
 
     loop {
@@ -99,7 +99,7 @@ async fn main() -> Result<(), ()> {
                 match platform_executor::orchestrator::execute(&node, &orchestrator).await {
                     Ok(_) => {}
                     Err(faliure) => match faliure {
-                        TaskFaliure::SigKill => {
+                        ExecuteFaliure::SigKill => {
                             panic!("Orchestrator indicated a critical execution faliure")
                         }
                     },
@@ -109,7 +109,7 @@ async fn main() -> Result<(), ()> {
                 match platform_executor::worker::execute(&mut node, &mut worker).await {
                     Ok(_) => {}
                     Err(faliure) => match faliure {
-                        TaskFaliure::SigKill => {
+                        ExecuteFaliure::SigKill => {
                             panic!("Worker indicated a critical execution faliure")
                         }
                     },
@@ -119,14 +119,14 @@ async fn main() -> Result<(), ()> {
                 match platform_executor::worker::execute(&mut node, &mut worker).await {
                     Ok(_) => {}
                     Err(faliure) => match faliure {
-                        TaskFaliure::SigKill => {
+                        ExecuteFaliure::SigKill => {
                             panic!("Worker indicated a critical execution faliure")
                         }
                     },
                 }
             }
         }
-        std::thread::sleep(std::time::Duration::new(0, 500000000));
+        std::thread::sleep(std::time::Duration::from_millis(500));
     }
 
     #[allow(unreachable_code)]

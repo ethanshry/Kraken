@@ -29,7 +29,7 @@ run="python3 ./src/main.py"
 
 ## Deployment Process
 
-Deployment is kicked off by a GraphQL call to the database. This will cause the database to insert a new `Deployment` entity with the `crate::model::ApplicationStatus::REQUESTED`.
+Deployment is kicked off by a GraphQL call to the database. This will cause the database to insert a new `Deployment` entity with the `crate::gql_model::ApplicationStatus::REQUESTED`.
 
 The Orchestrator's execution process involves checking the status of all active deployments. In the case that an `ApplicationStatus::REQUESTED` is detected, the deployment status will be updated to `ApplicationStatus::INITIALIZED`. The Orchestrator will then seek for a node which will be responsible for the deployment, and will send a message on that node's RabbitMQ Work Queue.
 

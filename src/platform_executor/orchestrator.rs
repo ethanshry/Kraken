@@ -1,9 +1,11 @@
+//! Defines the Orchestrator role, which manages work for all devices on the platform
 use crate::db::{Database, ManagedDatabase};
 use crate::file_utils::{append_to_file, clear_tmp, copy_dir_contents_to_static};
 use crate::git_utils::clone_remote_branch;
-use crate::model::{ApplicationStatus, Node, Service, ServiceStatus};
+use crate::gql_model::{ApplicationStatus, Node, Service, ServiceStatus};
+use crate::gql_schema::{Mutation, Query};
 use crate::network::wait_for_good_healthcheck;
-use crate::platform_executor::{GenericNode, SetupFaliure, Task, TaskFaliure};
+use crate::platform_executor::{ExecuteFaliure, GenericNode, SetupFaliure, Task};
 use crate::rabbit::{
     deployment_message::DeploymentMessage,
     log_message::LogMessage,
@@ -11,19 +13,19 @@ use crate::rabbit::{
     work_request_message::{WorkRequestMessage, WorkRequestType},
     QueueLabel, RabbitMessage,
 };
-use crate::schema::{Mutation, Query};
 use log::{info, warn};
 use std::fs;
 use std::process::Command;
 use std::sync::{Arc, Mutex};
 
+/// Only one device on the network has the Orchestrator role at a single time
+/// Handles coordination of all other nodes
 pub struct Orchestrator {
+    /// A handle to the rocket.rs http server task
     api_server: Option<tokio::task::JoinHandle<()>>,
-    //database: Database,
+    /// A reference to the Database containing information about the platform
     pub db_ref: Arc<Mutex<Database>>,
 }
-
-// TODO add broker to utils
 
 /// Spins up a Rocket API Server for the orchestration node
 pub fn create_api_server(o: &Orchestrator) -> tokio::task::JoinHandle<()> {
@@ -67,7 +69,7 @@ async fn fetch_ui(o: &Orchestrator) {
     }
 
     let git_data =
-        crate::gitapi::GitApi::get_tail_commits_for_repo_branches("ethanshry", "kraken-ui").await;
+        crate::github_api::get_tail_commits_for_repo_branches("ethanshry", "kraken-ui").await;
 
     let mut sha = String::from("");
 
@@ -136,7 +138,7 @@ async fn fetch_ui(o: &Orchestrator) {
 }
 
 /// Deploys a new RabbitMQ instance to the local machine
-/// TODO unbind this from the makefile
+/// TODO unbind this from the makefile (#52)
 pub async fn deploy_rabbit_instance(node: &GenericNode, o: &Orchestrator) -> Result<(), String> {
     match Command::new("make").arg("spinup-rabbit").output() {
         Ok(_) => {
@@ -167,11 +169,10 @@ pub async fn deploy_rabbit_instance(node: &GenericNode, o: &Orchestrator) -> Res
 /// Ensures the deployment has the potential for success
 /// This includes ensuring the url is valid and the shipwreck.toml exists in the repo
 pub async fn validate_deployment(git_url: &str) -> Result<String, ()> {
-    // https://github.com/ethanshry/scapegoat
-    match crate::gitapi::GitApi::parse_git_url(git_url) {
+    match crate::github_api::parse_git_url(git_url) {
         None => Err(()),
         Some(url_data) => {
-            match crate::gitapi::GitApi::check_for_file_in_repo(
+            match crate::github_api::check_for_file_in_repo(
                 &url_data.user,
                 &url_data.repo,
                 "shipwreck.toml",
@@ -179,7 +180,7 @@ pub async fn validate_deployment(git_url: &str) -> Result<String, ()> {
             .await
             {
                 Some(_) => {
-                    let commits = crate::gitapi::GitApi::get_tail_commits_for_repo_branches(
+                    let commits = crate::github_api::get_tail_commits_for_repo_branches(
                         &url_data.user,
                         &url_data.repo,
                     )
@@ -188,7 +189,7 @@ pub async fn validate_deployment(git_url: &str) -> Result<String, ()> {
                         None => Err(()),
                         Some(commits) => {
                             for c in commits {
-                                // TODO fix so any branch is accepted
+                                // TODO fix so any branch is accepted (#53)
                                 // Allow legacy 'master' branches
                                 if c.name == "master" || c.name == "main" {
                                     return Ok(c.commit.sha);
@@ -215,6 +216,8 @@ impl Orchestrator {
     }
 }
 
+/// The tasks associated with setting up this role.
+/// For an orchestrator, this involves setting up the RabbitMQ server, as well as the rocket.rs server, and establishing queue consumers for messages
 pub async fn setup(node: &mut GenericNode, o: &mut Orchestrator) -> Result<(), SetupFaliure> {
     // TODO load platform information from a save state
     /*let platform: Platform =
@@ -298,7 +301,7 @@ pub async fn setup(node: &mut GenericNode, o: &mut Orchestrator) -> Result<(), S
                 );
                 db.insert_node(&new_node);
             } else {
-                let new_node = crate::model::Node::from_incomplete(
+                let new_node = crate::gql_model::Node::from_incomplete(
                     &node,
                     None,
                     Some(message.ram_free),
@@ -398,19 +401,15 @@ pub async fn setup(node: &mut GenericNode, o: &mut Orchestrator) -> Result<(), S
         label: String::from(QueueLabel::Log.as_str()),
     });
 
-    // You can also deserialize this
-
-    // monitor git
-
-    // deploy docker services if determined to be best practice
-
     ui.await;
 
     o.api_server = Some(create_api_server(o));
     Ok(())
 }
 
-pub async fn execute(node: &GenericNode, o: &Orchestrator) -> Result<(), TaskFaliure> {
+/// Logic which should be executed every iteration
+/// Orchestrators are primarilly focused on determing if deployment requests are valid, and distreibuting them to the best-suited worker device
+pub async fn execute(node: &GenericNode, o: &Orchestrator) -> Result<(), ExecuteFaliure> {
     // Todo look for work to distribute and do it
     async || -> () {
         // Look through deployments for new deployments which need to be scheduled
@@ -493,7 +492,7 @@ pub async fn execute(node: &GenericNode, o: &Orchestrator) -> Result<(), TaskFal
                         }
                     }
                     ApplicationStatus::UpdateRequested => {
-                        let commit = crate::gitapi::GitApi::get_tail_commit_for_branch_from_url(
+                        let commit = crate::github_api::get_tail_commit_for_branch_from_url(
                             "main",
                             &deployment.src_url,
                         )

@@ -1,3 +1,5 @@
+//! Utilities to better work with the filesystem
+
 use log::{info, warn};
 use std::fs;
 use std::io;
@@ -69,6 +71,7 @@ pub fn clear_tmp() -> bool {
     fs::remove_dir_all("tmp").is_ok()
 }
 
+/// Writes data to the end of a file
 pub fn append_to_file(file_path: &str, data: &str) {
     let file = std::fs::OpenOptions::new()
         .create(true)
@@ -85,6 +88,7 @@ pub fn append_to_file(file_path: &str, data: &str) {
     }
 }
 
+/// Returns a list of paths to files in a folder
 pub fn get_all_files_in_folder(path: &str) -> Result<Vec<String>, ()> {
     let entries = fs::read_dir(path);
     match entries {

@@ -1,11 +1,8 @@
+//! Handles all communication to RabbitMQ
+//! This heavily relies on the lapin crate under the hood
 //!
-//!
-//!
-//!
-//!
-//!
-//!
-//!
+//! The key functionality of this module is the `RabbitMessage` trait, which defines an encode/decode interface for all rabbit messages
+//! The idea here is we only send defined messages over RabbitMQ, which means we know how to interpret their meaning
 
 pub mod deployment_message;
 pub mod log_message;
@@ -16,6 +13,7 @@ use futures_util::stream::StreamExt;
 use lapin::{options::*, types::FieldTable, BasicProperties, Connection, ConnectionProperties};
 use log::error;
 use tokio_amqp::*;
+
 /// The interface between Kraken and RabbitMQ
 pub struct RabbitBroker {
     /// Connection to the Rabbit Instance (Should be one per device)

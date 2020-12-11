@@ -1,3 +1,5 @@
+//! Data struct for a docker container
+
 use std::fmt;
 /// This is a reduction of bollard's ContainerSummaryInner
 pub struct DockerContainer {

@@ -1,8 +1,10 @@
+//! Defines the Worker role, which handles core fucntionality of all devices on the platform
 use crate::docker::DockerBroker;
 use crate::file_utils::{clear_tmp, copy_dockerfile_to_dir};
 use crate::git_utils::clone_remote_branch;
-use crate::model::ApplicationStatus;
-use crate::platform_executor::{DeploymentInfo, GenericNode, SetupFaliure, Task, TaskFaliure};
+use crate::gql_model::ApplicationStatus;
+use crate::platform_executor::{DeploymentInfo, ExecuteFaliure, GenericNode, SetupFaliure, Task};
+use crate::rabbit::sysinfo_message::SysinfoMessage;
 use crate::rabbit::{
     deployment_message::DeploymentMessage,
     log_message::LogMessage,
@@ -12,8 +14,12 @@ use crate::rabbit::{
 use log::{error, info, warn};
 use queues::{IsQueue, Queue};
 use std::sync::{Arc, Mutex};
+use sysinfo::SystemExt;
 
+/// This role is common to all Kraken devices.
+/// Handles standard tasks- the ability to deploy applications, the monitoring of system statistics, etc
 pub struct Worker {
+    /// Each WorkRequestMessage is a request of the worker by the orchestrator
     work_requests: Arc<Mutex<Queue<WorkRequestMessage>>>,
 }
 
@@ -26,11 +32,41 @@ impl Worker {
     }
 }
 
-pub async fn setup(node: &mut GenericNode, w: &mut Worker) -> Result<(), SetupFaliure> {
-    // clear all tmp files
-    clear_tmp();
+/// Returns a task which publishes system info to RabbitMQ
+pub async fn get_publish_node_system_stats_task(node: &GenericNode) -> tokio::task::JoinHandle<()> {
+    let system_status_proc = {
+        let system_uuid = node.system_id.clone();
 
-    // TODO distinguish between no rabbit and no platform
+        let broker =
+            match crate::platform_executor::connect_to_rabbit_instance(&node.rabbit_addr).await {
+                Ok(b) => b,
+                Err(_) => panic!("Could not establish rabbit connection"),
+            };
+
+        let publisher = broker.get_channel().await;
+
+        tokio::spawn(async move {
+            let mut msg = SysinfoMessage::new(&system_uuid);
+            loop {
+                std::thread::sleep(std::time::Duration::new(5, 0));
+                let system = sysinfo::System::new_all();
+                msg.update_message(
+                    system.get_free_memory(),
+                    system.get_used_memory(),
+                    system.get_uptime(),
+                    system.get_load_average().five as f32,
+                );
+                msg.send(&publisher, QueueLabel::Sysinfo.as_str()).await;
+            }
+        })
+    };
+    system_status_proc
+}
+
+/// The tasks associated with setting up this role.
+/// Workers are primarilly concerned with connecting to RabbitMQ, and establishing necesarry queues
+pub async fn setup(node: &mut GenericNode, w: &mut Worker) -> Result<(), SetupFaliure> {
+    clear_tmp();
 
     match crate::platform_executor::connect_to_rabbit_instance(&node.rabbit_addr).await {
         Ok(b) => node.broker = Some(b),
@@ -40,7 +76,6 @@ pub async fn setup(node: &mut GenericNode, w: &mut Worker) -> Result<(), SetupFa
         }
     }
 
-    // Declare rabbit queue
     info!("Declared rabbit queue for {}", &node.system_id);
     node.broker
         .as_ref()
@@ -49,8 +84,7 @@ pub async fn setup(node: &mut GenericNode, w: &mut Worker) -> Result<(), SetupFa
         .await;
 
     // send system stats
-    let publish_node_stats_task =
-        crate::platform_executor::get_publish_node_system_stats_task(node).await;
+    let publish_node_stats_task = get_publish_node_system_stats_task(node).await;
     node.worker_tasks.push(Task {
         task: publish_node_stats_task,
         label: String::from("NodeStats"),
@@ -68,7 +102,6 @@ pub async fn setup(node: &mut GenericNode, w: &mut Worker) -> Result<(), SetupFa
             let (_node, message) = WorkRequestMessage::deconstruct_message(&data);
             info!("Recieved Message on {}'s Work Queue", &system_uuid);
             work_queue.add(message).unwrap();
-            return;
         };
         let system_uuid = node.system_id.clone();
         tokio::spawn(async move {
@@ -89,7 +122,9 @@ pub async fn setup(node: &mut GenericNode, w: &mut Worker) -> Result<(), SetupFa
     Ok(())
 }
 
-pub async fn execute(node: &mut GenericNode, w: &mut Worker) -> Result<(), TaskFaliure> {
+/// Logic which should be executed every iteration
+/// Primarilly focused on handling deployment/kill/update requests, and processing logs
+pub async fn execute(node: &mut GenericNode, w: &mut Worker) -> Result<(), ExecuteFaliure> {
     // Each execution will perform a single task in the work queue.
     // If more work needs to be completed, execute should be called again
     let arc = w.work_requests.clone();
@@ -170,6 +205,7 @@ pub async fn execute(node: &mut GenericNode, w: &mut Worker) -> Result<(), TaskF
     Ok(())
 }
 
+/// Deploys an application instance via docker
 pub async fn handle_deployment(
     system_id: &str,
     broker: &RabbitBroker,
@@ -184,7 +220,7 @@ pub async fn handle_deployment(
 
     msg.send(&publisher, QueueLabel::Deployment.as_str()).await;
 
-    // TODO make function to execute a thing in a tmp dir which auto-cleans itself
+    // TODO make function to execute a thing in a tmp dir which auto-cleans itself (#51)
     let tmp_dir_path = &format!("tmp/deployment/{}", id);
 
     info!("Creating Container {}", &container_guid);
@@ -201,12 +237,9 @@ pub async fn handle_deployment(
         .wait()
         .unwrap();
 
-    // Inject the proper dockerfile into the project
-    // TODO read configuration information from toml file
-
     let mut deployment_info = DeploymentInfo::new(&container_guid, "", false);
 
-    let deployment_config = match crate::deployment::config::get_config_for_path(&format!(
+    let deployment_config = match crate::deployment::shipwreck::get_config_for_path(&format!(
         "{}/shipwreck.toml",
         &tmp_dir_path
     )) {
@@ -239,8 +272,6 @@ pub async fn handle_deployment(
             return Err(deployment_info);
         }
     };
-
-    //let dockerfile_name = "python36.dockerfile";
 
     copy_dockerfile_to_dir(dockerfile_name, tmp_dir_path);
 
@@ -296,6 +327,7 @@ pub async fn handle_deployment(
     Ok(deployment_info)
 }
 
+/// Terminates a docker deployment
 pub async fn kill_deployment(
     system_id: &str,
     broker: &RabbitBroker,

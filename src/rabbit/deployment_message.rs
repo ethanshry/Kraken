@@ -1,4 +1,6 @@
-use crate::model::ApplicationStatus;
+//! A message describing the status of an active deployment
+
+use crate::gql_model::ApplicationStatus;
 use crate::rabbit::RabbitMessage;
 use std::iter::FromIterator;
 use std::str::FromStr;

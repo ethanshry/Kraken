@@ -232,12 +232,15 @@ impl DockerBroker {
 
                     while let Some(result) = build_results.next().await {
                         if let Ok(stage) = result {
-                            let bollard::service::CreateImageInfo {
+                            let bollard::service::BuildInfo {
                                 id,
+                                stream,
                                 error,
+                                error_detail,
                                 status,
                                 progress,
                                 progress_detail,
+                                aux,
                             } = stage;
                             info!(
                                 "{:?},{:?},{:?},{:?},{:?}",

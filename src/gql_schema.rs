@@ -1,5 +1,6 @@
+//! Defines GQL Query/Mutation types and specific resolver functions
 use crate::db::{Database, ManagedDatabase};
-use crate::model::{
+use crate::gql_model::{
     ApplicationStatus, Deployment, Node, Orchestrator, Platform, Service, TemporalApplicationStatus,
 };
 use juniper::{FieldError, FieldResult};
@@ -142,6 +143,7 @@ impl Platform {
     }
 }
 
+/// Defines GraphQL Queries
 pub struct Query;
 
 #[juniper::object(Context = ManagedDatabase)]
@@ -179,6 +181,7 @@ impl Query {
         Ok(res)
     }
 
+    /// Get information about the platform as a whole
     fn get_platform(context: &ManagedDatabase) -> FieldResult<Platform> {
         let db = context.db.lock().unwrap();
         match (db.get_deployments(), db.get_nodes()) {
@@ -192,6 +195,7 @@ impl Query {
         }
     }
 
+    /// Get a list of deployment IDs which have available log files
     pub fn get_available_logs() -> FieldResult<Vec<String>> {
         let mut logs = vec![];
         for file in crate::file_utils::get_all_files_in_folder(&format!(
@@ -211,15 +215,14 @@ impl Query {
         }
         Ok(logs)
     }
-
-    //fn get_platform(context: &Database) -> FieldResult<Option<Platform>> {
-    //}
 }
 
+// Defines GQL Mutations
 pub struct Mutation;
 
 #[juniper::object(Context = ManagedDatabase)]
 impl Mutation {
+    /// Request the platform create a deployment from the specified repository url
     fn create_deployment(context: &ManagedDatabase, deployment_url: String) -> FieldResult<String> {
         let uuid = Uuid::new_v4().to_hyphenated().to_string();
         context
@@ -239,6 +242,7 @@ impl Mutation {
         Ok(uuid)
     }
 
+    /// Request the platform look for an update for the specified deployment
     fn poll_redeploy(context: &ManagedDatabase, deployment_id: String) -> FieldResult<bool> {
         let mut db = context.db.lock().unwrap();
         match db.get_deployment(&deployment_id) {
@@ -254,6 +258,7 @@ impl Mutation {
         }
     }
 
+    /// Request the platform terminate the specified deployment
     fn cancel_deployment(context: &ManagedDatabase, deployment_id: String) -> FieldResult<bool> {
         let mut db = context.db.lock().unwrap();
         match db.get_deployment(&deployment_id) {
@@ -268,7 +273,4 @@ impl Mutation {
             )),
         }
     }
-
-    //fn get_platform(context: &Database) -> FieldResult<Option<Platform>> {
-    //}
 }

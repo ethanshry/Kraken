@@ -47,7 +47,7 @@ pub async fn scan_network_for_machines(port: u16) -> Vec<String> {
                 info!("Scanning network address {}", addr);
                 if reqwest::Client::new()
                     .get(&format!("http://{}:{}/ping", addr, port))
-                    .timeout(std::time::Duration::new(0, 500000000))
+                    .timeout(std::time::Duration::from_millis(500))
                     .send()
                     .await
                     .is_ok()
@@ -75,7 +75,7 @@ pub async fn find_orchestrator_on_lan() -> Option<String> {
 pub async fn healthcheck(url: &str) -> bool {
     reqwest::Client::new()
         .get(url)
-        .timeout(std::time::Duration::new(0, 1000000000))
+        .timeout(std::time::Duration::new(1, 0))
         .send()
         .await
         .is_ok()
@@ -91,7 +91,7 @@ pub async fn wait_for_good_healthcheck(url: &str, retry_count: Option<u16>) -> b
                 if let true = healthcheck(url).await {
                     return true;
                 }
-                std::thread::sleep(std::time::Duration::new(0, 500000000));
+                std::thread::sleep(std::time::Duration::from_millis(500));
             }
             return false;
         }
@@ -99,7 +99,7 @@ pub async fn wait_for_good_healthcheck(url: &str, retry_count: Option<u16>) -> b
             if let true = healthcheck(url).await {
                 return true;
             }
-            std::thread::sleep(std::time::Duration::new(0, 500000000));
+            std::thread::sleep(std::time::Duration::from_millis(500));
         },
     }
 }
