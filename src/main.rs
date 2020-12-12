@@ -1,41 +1,31 @@
+//! Kraken is a LAN-based, distributed, fault tolerant application deployment platform
+//!
+//! See CRATE_MANIFEST_DIR/documentation for more information
+
 #![feature(proc_macro_hygiene, decl_macro, async_closure)]
 #![allow(dead_code)]
+#![warn(missing_docs, rust_2018_idioms)]
 
 #[macro_use]
 extern crate juniper;
-extern crate fs_extra;
-extern crate queues;
-extern crate rocket;
-extern crate rocket_cors;
-extern crate serde;
-extern crate strum;
-extern crate strum_macros;
-extern crate tokio;
 
+mod api_routes;
 mod db;
 mod deployment;
 mod docker;
 mod file_utils;
 mod git_utils;
-mod gitapi;
-mod model;
+mod github_api;
+mod gql_model;
+mod gql_schema;
 mod network;
 mod platform_executor;
 mod rabbit;
-mod routes;
-mod schema;
 mod testing;
 mod utils;
-mod worker;
 
 use log::{error, info, warn};
-use platform_executor::{GenericNode, TaskFaliure};
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum NodeMode {
-    WORKER,
-    ORCHESTRATOR,
-}
+use platform_executor::{ExecuteFaliure, GenericNode, NodeMode};
 
 #[tokio::main]
 async fn main() -> Result<(), ()> {
@@ -64,7 +54,7 @@ async fn main() -> Result<(), ()> {
 
     let rabbit_addr: String = format!(
         "amqp://{}:5672",
-        orchestrator_ip.unwrap_or(String::from("localhost"))
+        orchestrator_ip.unwrap_or_else(|| String::from("localhost"))
     );
 
     info!("rabbit addr will be {}", rabbit_addr);
@@ -100,6 +90,7 @@ async fn main() -> Result<(), ()> {
             .unwrap();
     }
 
+    // TODO remove for final
     testing::setup_experiment(&mut node, &mut orchestrator).await;
 
     loop {
@@ -108,7 +99,7 @@ async fn main() -> Result<(), ()> {
                 match platform_executor::orchestrator::execute(&node, &orchestrator).await {
                     Ok(_) => {}
                     Err(faliure) => match faliure {
-                        TaskFaliure::SigKill => {
+                        ExecuteFaliure::SigKill => {
                             panic!("Orchestrator indicated a critical execution faliure")
                         }
                     },
@@ -118,7 +109,7 @@ async fn main() -> Result<(), ()> {
                 match platform_executor::worker::execute(&mut node, &mut worker).await {
                     Ok(_) => {}
                     Err(faliure) => match faliure {
-                        TaskFaliure::SigKill => {
+                        ExecuteFaliure::SigKill => {
                             panic!("Worker indicated a critical execution faliure")
                         }
                     },
@@ -128,14 +119,14 @@ async fn main() -> Result<(), ()> {
                 match platform_executor::worker::execute(&mut node, &mut worker).await {
                     Ok(_) => {}
                     Err(faliure) => match faliure {
-                        TaskFaliure::SigKill => {
+                        ExecuteFaliure::SigKill => {
                             panic!("Worker indicated a critical execution faliure")
                         }
                     },
                 }
             }
         }
-        std::thread::sleep(std::time::Duration::new(0, 500000000));
+        std::thread::sleep(std::time::Duration::from_millis(500));
     }
 
     #[allow(unreachable_code)]

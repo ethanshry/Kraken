@@ -1,4 +1,6 @@
-use crate::model::{
+//! Storage for platform information for the Orchestrator
+
+use crate::gql_model::{
     ApplicationStatus, Deployment, Node, Orchestrator, OrchestratorInterface, Service,
 };
 use log::{info, warn};

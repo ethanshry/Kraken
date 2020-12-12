@@ -1,8 +1,8 @@
+//! A message containing status information for a device on the platform
 use crate::rabbit::RabbitMessage;
 
 use std::iter::FromIterator;
 
-// TODO implement format
 pub struct SysinfoMessage {
     pub system_identifier: String,
     pub ram_free: u64,
@@ -42,7 +42,7 @@ impl RabbitMessage<SysinfoMessage> for SysinfoMessage {
     fn deconstruct_message(packet_data: &Vec<u8>) -> (String, SysinfoMessage) {
         let res = Vec::from_iter(
             String::from_utf8_lossy(packet_data)
-                .split("|")
+                .split('|')
                 .map(|s| s.to_string()),
         );
 

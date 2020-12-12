@@ -1,3 +1,9 @@
+//! Handles all communication to RabbitMQ
+//! This heavily relies on the lapin crate under the hood
+//!
+//! The key functionality of this module is the `RabbitMessage` trait, which defines an encode/decode interface for all rabbit messages
+//! The idea here is we only send defined messages over RabbitMQ, which means we know how to interpret their meaning
+
 pub mod deployment_message;
 pub mod log_message;
 pub mod sysinfo_message;
@@ -7,6 +13,7 @@ use futures_util::stream::StreamExt;
 use lapin::{options::*, types::FieldTable, BasicProperties, Connection, ConnectionProperties};
 use log::error;
 use tokio_amqp::*;
+
 /// The interface between Kraken and RabbitMQ
 pub struct RabbitBroker {
     /// Connection to the Rabbit Instance (Should be one per device)
@@ -80,17 +87,13 @@ impl RabbitBroker {
             .create_channel()
             .await
             .expect("Could not create rabbit channel for queue declaration");
-        match chan
-            .queue_declare(
-                queue_label,
-                QueueDeclareOptions::default(),
-                FieldTable::default(),
-            )
-            .await
-        {
-            Ok(_) => true,
-            Err(_) => false, // Don't worry about faliures right now
-        }
+        chan.queue_declare(
+            queue_label,
+            QueueDeclareOptions::default(),
+            FieldTable::default(),
+        )
+        .await
+        .is_ok()
     }
 
     /// Gets a new publisher for the existing broker channel. This should not be shared between threads.
@@ -133,7 +136,7 @@ impl RabbitBroker {
     }
 
     /// Send an ack to a message
-    async fn ack(channel: &lapin::Channel, tag: u64) -> () {
+    async fn ack(channel: &lapin::Channel, tag: u64) {
         channel
             .basic_ack(tag, BasicAckOptions::default())
             .await
@@ -167,7 +170,7 @@ impl RabbitBroker {
     /// ```
     pub async fn consume_queue<F>(&self, consumer_tag: &str, queue_label: &str, handler: F)
     where
-        F: Fn(Vec<u8>) -> (),
+        F: Fn(Vec<u8>),
     {
         let consumer_channel = self.get_channel().await;
         let mut consumer = Self::get_consumer(&consumer_channel, queue_label, consumer_tag).await;
@@ -194,7 +197,7 @@ pub trait RabbitMessage<T> {
     where
         T: 'async_trait,
     {
-        match channel
+        channel
             .basic_publish(
                 "",
                 tag,
@@ -203,9 +206,6 @@ pub trait RabbitMessage<T> {
                 BasicProperties::default(),
             )
             .await
-        {
-            Ok(_) => true,
-            Err(_) => false,
-        }
+            .is_ok()
     }
 }

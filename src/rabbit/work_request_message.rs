@@ -1,6 +1,8 @@
+//! A message requesting a task of an worker role
 use crate::rabbit::RabbitMessage;
 use std::iter::FromIterator;
 
+/// Defines the type of request we are recieving. This informs the schema the data is packed/sent in
 #[derive(Clone, Debug)]
 pub enum WorkRequestType {
     RequestDeployment,
@@ -8,6 +10,7 @@ pub enum WorkRequestType {
     SetPromotionPriority, // TODO implement this. Current thought is a Node is given a promotion priority
                           // when it loses contact with the Orchestrator.
                           // Nodes wait their priority * 1 minute before promoting themselves to Orchestrators.
+                          // I am wondering if there should be a third role (i.e. a PromotionCanidate) which should be different from this
 }
 
 impl WorkRequestType {
@@ -49,7 +52,7 @@ impl WorkRequestMessage {
         priority: Option<i16>,
     ) -> WorkRequestMessage {
         WorkRequestMessage {
-            request_type: request_type,
+            request_type,
             deployment_id: match deployment_id {
                 Some(d) => Some(d.to_owned()),
                 None => None,
@@ -58,7 +61,7 @@ impl WorkRequestMessage {
                 Some(d) => Some(d.to_owned()),
                 None => None,
             },
-            priority: priority.clone(),
+            priority,
         }
     }
 }
@@ -90,11 +93,11 @@ impl RabbitMessage<WorkRequestMessage> for WorkRequestMessage {
             }
         }
     }
-    // TODO apparently this signature isn't ideal for all use cases, maybe needs a refactor
+    // TODO apparently this signature isn't ideal for all use cases, maybe needs a refactor (#54)
     fn deconstruct_message(packet_data: &Vec<u8>) -> (String, WorkRequestMessage) {
         let res = Vec::from_iter(
             String::from_utf8_lossy(packet_data)
-                .split("|")
+                .split('|')
                 .map(|s| s.to_string()),
         );
 
