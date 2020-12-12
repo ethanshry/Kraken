@@ -299,6 +299,12 @@ pub async fn handle_deployment(
                     &r.log.join("\n")
                 ),
             );
+
+            // Send build logs to appropriate logfile
+            let mut log_msg = LogMessage::new(&container_guid);
+            log_msg.update_message(&r.log.join("\n"));
+            log_msg.send(&publisher, QueueLabel::Log.as_str()).await;
+
             msg.send(&publisher, QueueLabel::Deployment.as_str()).await;
 
             // Image build went ok, now deploy the container
