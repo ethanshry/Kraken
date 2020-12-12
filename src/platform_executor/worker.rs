@@ -92,7 +92,7 @@ pub async fn setup(node: &mut GenericNode, w: &mut Worker) -> Result<(), SetupFa
 
     // consumer personal work queue
     // TODO be better at this clone move stuff
-    let sysinfo_consumer = {
+    let work_request_consumer = {
         let system_uuid = node.system_id.clone();
         let addr = node.rabbit_addr.clone();
         let arc = w.work_requests.clone();
@@ -115,7 +115,7 @@ pub async fn setup(node: &mut GenericNode, w: &mut Worker) -> Result<(), SetupFa
         })
     };
     node.queue_consumers.push(Task {
-        task: sysinfo_consumer,
+        task: work_request_consumer,
         label: String::from(&node.system_id),
     });
 

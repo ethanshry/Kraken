@@ -1287,7 +1287,7 @@ dependencies = [
 
 [[package]]
 name = "kraken"
-version = "0.0.1"
+version = "0.1.0"
 dependencies = [
  "async-std",
  "async-trait",

@@ -19,11 +19,9 @@ An example of what the current file format is is shown below:
 name="scapegoat"
 version="1.0.0"
 author="Ethan Shry"
-endpoint="https://github.com/ethanshry/scapegoat"
 
 [config]
 lang="python3"
-test=""
 run="python3 ./src/main.py"
 ```
 
@@ -42,3 +40,18 @@ The Shipwreck.toml consists of two main parts- app and config.
 ### app
 
 The app section contains information about your application overall.
+
+| field   | Value  | Description                  |
+| ------- | ------ | ---------------------------- |
+| name    | string | The name of your application |
+| version | string | Your application's version   |
+| author  | string | The name of the author       |
+
+### config
+
+The config section contains information necesarry to configure your deployment
+
+| field | Value        | Description                                               |
+| ----- | ------------ | --------------------------------------------------------- |
+| lang  | python\|node | Determines the dockerfile used to deploy your application |
+| run   | string       | The command to be run by docker to start your application |

@@ -128,7 +128,14 @@ pub trait RabbitMessage<T> {
 
 Essentially, implementors of this Trait must define a build/deconstruct interface for their messages, which allows tighter constraint on the message schema. In general, we restrict the types of messages in a single queue to a single type, which means that consumers of that queue know what type of message to expect and therefore how to decode it.
 
-An overview of the channels defined can be found here.
+An overview of the channels defined can be found below.
+
+| Channel ID | Defined By   | Message Struct     | Description                                                                                   |
+| ---------- | ------------ | ------------------ | --------------------------------------------------------------------------------------------- |
+| Sysinfo    | Orchestrator | SysinfoMessage     | Carries information about the status of devices on the network                                |
+| Deployment | Orchestrator | DeploymentMessage  | Carries information about a deployment (either in build, while active, or after deletion)     |
+| Log        | Orchestrator | LogMessage         | Carries the log information from a deployment (currently only while the deployment is active) |
+| SystemId   | Worker       | WorkRequestMessage | Allows the orchestrator to request work from a worker                                         |
 
 Additionally, the Orchestration node provides a GQL/REST interface for the UI. The REST interface is dead simple:
 
@@ -153,3 +160,5 @@ At this point, there is no platform resilliancy. In fact, should anything bad ha
 Ideally, this will be fixed in the next iteration, and faliures will lead to re-deployments and rollover processes.
 
 ## Deployments
+
+Deployments to the platform are requested via the GraphQL interface `create_deployment` mutation (typically via the Kraken-UI). When a request comes in, it creates an entry in the Orchestrator's database with the `ApplicationStatus::DeploymentRequested` status. The next time `execute` is called for our Orchestrator, it will see this requested deployment and look for the least-loaded worker node to deploy to. The orchestrator will then send a `WorkRequestMessage` of `WorkRequestType::RequestDeployment` to that worker. This will then add an entry to that worker's `work_requests` queue. When `execute` is next called for that worker, it will see that request, and start creating the application container. Deployments are handled by Docker, to allow for platform-agnostic deployment. Dockerfiles for the platform are stored in the `CARGO_MANIFEST_DIR/dockerfiles` folder.

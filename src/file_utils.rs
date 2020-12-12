@@ -14,7 +14,7 @@ pub fn copy_dir_contents_to_static(dir: &str) {
         Err(_) => false,
     };
     fs::create_dir("static").unwrap();
-    fn copy_dir_with_parent(root: &str, dir: &str) -> () {
+    fn copy_dir_with_parent(root: &str, dir: &str) {
         if root != "" {
             fs::create_dir(format!("static/{}", root)).unwrap();
         }
