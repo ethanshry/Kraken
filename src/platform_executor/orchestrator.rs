@@ -220,12 +220,6 @@ impl Orchestrator {
 /// The tasks associated with setting up this role.
 /// For an orchestrator, this involves setting up the RabbitMQ server, as well as the rocket.rs server, and establishing queue consumers for messages
 pub async fn setup(node: &mut GenericNode, o: &mut Orchestrator) -> Result<(), SetupFaliure> {
-    // TODO load platform information from a save state
-    /*let platform: Platform =
-        crate::utils::load_or_create_platform(&mut o.database.as_ref().unwrap());
-
-    info!("Platform: {:?}", platform);
-    */
     let arc = o.db_ref.clone();
     let mut db = arc.lock().unwrap();
     db.insert_node(&Node::new(
@@ -249,12 +243,6 @@ pub async fn setup(node: &mut GenericNode, o: &mut Orchestrator) -> Result<(), S
     let rabbit = deploy_rabbit_instance(&node, &o);
 
     let tasks = future::join(ui, rabbit);
-    /*
-    // Establish RabbitMQ
-    if let Err(e) = deploy_rabbit_instance(&node, &o).await {
-        warn!("{}", e);
-        return Err(SetupFaliure::BadRabbit);
-    }*/
     let (_ui_res, _rabbit_res) = tasks.await;
 
     // Validate connection is possible

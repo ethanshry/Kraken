@@ -5,12 +5,13 @@
 
 // Maybe look into this for ideas for safety
 // https://github.com/babariviere/port_scanner-rs/blob/master/src/lib.rs
+use futures::future;
 use log::info;
 use pnet::{datalink, ipnetwork::IpNetwork};
 
 // Constants to restrict subnet to search through, speeds up search significantly
-const MIN_SUBNET_ADDR: u8 = 30;
-const MAX_SUBNET_ADDR: u8 = 70;
+const MIN_SUBNET_ADDR: u8 = 0;
+const MAX_SUBNET_ADDR: u8 = 255;
 
 pub async fn scan_network_for_machines(port: u16) -> Vec<String> {
     let mut subnet_addr: Option<[u8; 3]> = None;
@@ -41,8 +42,43 @@ pub async fn scan_network_for_machines(port: u16) -> Vec<String> {
             for x in MIN_SUBNET_ADDR..MAX_SUBNET_ADDR {
                 addrs_to_scan.push(format!("{}.{}.{}.{}", subnet[0], subnet[1], subnet[2], x));
             }
-            // TODO maybe look into https://github.com/rayon-rs/rayon to make this better : see #45
+
             let mut open_addrs = vec![];
+            // TODO maybe look into https://github.com/rayon-rs/rayon to make this better : see #45
+            let open_addr_futures: Vec<_> = addrs_to_scan
+                .iter()
+                .map(|addr| async move {
+                    match reqwest::Client::new()
+                        .get(&format!("http://{}:{}/ping", addr, port))
+                        .timeout(std::time::Duration::from_millis(500))
+                        .send()
+                        .await
+                        .is_ok()
+                    {
+                        true => Ok(addr.to_string()),
+                        false => Err(addr.to_string()),
+                    }
+                })
+                .collect();
+
+            let unpin_futs: Vec<_> = open_addr_futures.into_iter().map(Box::pin).collect();
+            let mut futs = unpin_futs;
+
+            while !futs.is_empty() {
+                match future::select_all(futs).await {
+                    (Ok(addr), _index, remaining) => {
+                        info!("Addr! {}", addr);
+                        open_addrs.push(addr.clone());
+                        futs = remaining;
+                    }
+                    (Err(addr), _index, remaining) => {
+                        info!("Nothing found at {}", addr);
+                        futs = remaining;
+                    }
+                }
+            }
+            /*
+            //let results = futures::join_all(open_addrs);
             for addr in addrs_to_scan.iter() {
                 info!("Scanning network address {}", addr);
                 if reqwest::Client::new()
@@ -55,6 +91,7 @@ pub async fn scan_network_for_machines(port: u16) -> Vec<String> {
                     open_addrs.push(addr.to_string());
                 }
             }
+            */
 
             info!("{:?}", open_addrs);
             return open_addrs;
