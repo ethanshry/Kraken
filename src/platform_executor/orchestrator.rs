@@ -13,6 +13,7 @@ use crate::rabbit::{
     work_request_message::{WorkRequestMessage, WorkRequestType},
     QueueLabel, RabbitMessage,
 };
+use futures::{future, FutureExt};
 use log::{info, warn};
 use std::fs;
 use std::process::Command;
@@ -245,11 +246,16 @@ pub async fn setup(node: &mut GenericNode, o: &mut Orchestrator) -> Result<(), S
     // download site
     let ui = fetch_ui(o);
 
+    let rabbit = deploy_rabbit_instance(&node, &o);
+
+    let tasks = future::join(ui, rabbit);
+    /*
     // Establish RabbitMQ
     if let Err(e) = deploy_rabbit_instance(&node, &o).await {
         warn!("{}", e);
         return Err(SetupFaliure::BadRabbit);
-    }
+    }*/
+    let (_ui_res, _rabbit_res) = tasks.await;
 
     // Validate connection is possible
     match crate::platform_executor::connect_to_rabbit_instance(&node.rabbit_addr).await {
@@ -400,8 +406,6 @@ pub async fn setup(node: &mut GenericNode, o: &mut Orchestrator) -> Result<(), S
         task: log_consumer,
         label: String::from(QueueLabel::Log.as_str()),
     });
-
-    ui.await;
 
     o.api_server = Some(create_api_server(o));
     Ok(())
