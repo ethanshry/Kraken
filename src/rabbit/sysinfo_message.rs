@@ -3,6 +3,7 @@ use crate::rabbit::RabbitMessage;
 
 use std::iter::FromIterator;
 
+#[derive(PartialEq, Debug)]
 pub struct SysinfoMessage {
     pub system_identifier: String,
     pub ram_free: u64,
@@ -71,4 +72,15 @@ impl RabbitMessage<SysinfoMessage> for SysinfoMessage {
 
         (res[0].clone(), msg)
     }
+}
+
+#[test]
+fn sysinfomessage_is_invertible() {
+    let mut left = SysinfoMessage::new("id");
+    left.update_message(15, 15, 15, 1.5);
+    let data = left.build_message();
+
+    let (id, right) = SysinfoMessage::deconstruct_message(&data);
+    assert_eq!(id, "id");
+    assert_eq!(left, right);
 }

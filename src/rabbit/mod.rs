@@ -7,6 +7,7 @@
 pub mod deployment_message;
 pub mod log_message;
 pub mod sysinfo_message;
+pub mod util;
 pub mod work_request_message;
 use async_trait::async_trait;
 use futures_util::stream::StreamExt;
@@ -135,7 +136,7 @@ impl RabbitBroker {
             .expect("cannot create consumer")
     }
 
-    /// Send an ack to a message
+    /// Sends an ack to a message
     async fn ack(channel: &lapin::Channel, tag: u64) {
         channel
             .basic_ack(tag, BasicAckOptions::default())
@@ -180,6 +181,33 @@ impl RabbitBroker {
             RabbitBroker::ack(&channel, delivery.delivery_tag).await;
             handler(data);
         }
+    }
+
+    /// Returns a queue consumer to be used incrementally in conjucntion with rabbit::util::try_fetch_queue_item
+    ///
+    /// # Arguments
+    ///
+    /// * `consumer_tag` - Label for the consumer of the queue
+    /// * `queue_label` - Label for the queue to consume, typically a QueueLabel::<T>.to_str()
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let broker = match RabbitBroker::new(&addr).await {
+    /// Some(b) => b,
+    /// None => panic!("Could not establish rabbit connection"),
+    /// };
+    ///
+    /// let consumer = broker.consume_queue('1234', QueueLabel::Sysinfo.as_str()).await
+    /// ```
+    pub async fn consume_queue_incr(
+        &self,
+        consumer_tag: &str,
+        queue_label: &str,
+    ) -> lapin::Consumer {
+        let consumer_channel = self.get_channel().await;
+        let consumer = Self::get_consumer(&consumer_channel, queue_label, consumer_tag).await;
+        consumer
     }
 }
 

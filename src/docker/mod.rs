@@ -206,8 +206,12 @@ impl DockerBroker {
         };
         match make_tar() {
             Ok(_) => {
-                info!("Tar for {} completed succesfully", source_path);
                 let mut log: Vec<String> = vec![];
+                info!("Tar for {} completed succesfully", source_path);
+                log.push(format!(
+                    "[KRAKEN][INFO]Tar for {} completed succesfully",
+                    source_path
+                ));
                 let build_result: Result<(), String> = async {
                     let mut file =
                         File::open(format!("./tmp/containers/{}.tar.gz", &container_guid))
@@ -217,7 +221,10 @@ impl DockerBroker {
                         .expect("Failed to read tarball");
 
                     info!("Building docker image [{}]", &container_guid);
-
+                    log.push(format!(
+                        "[KRAKEN][INFO]Building docker image [{}]",
+                        &container_guid
+                    ));
                     let mut build_results = self.conn.build_image(
                         BuildImageOptions {
                             dockerfile: "Dockerfile",
@@ -252,14 +259,14 @@ impl DockerBroker {
                             //let data = format!("{:?}", id);
                             let data = "";
                             if !data.is_empty() {
-                                log.push(data.to_owned());
+                                log.push(format!("[KRAKEN][INFO] {}", data.to_owned()));
                             }
-                            /*
-                            _ => {
-                                // TODO figure out what to do with other results
-                                // BuildImageAux is called right before the final Stream message
-                            }
-                            */
+                        /*
+                        _ => {
+                            // TODO figure out what to do with other results
+                            // BuildImageAux is called right before the final Stream message
+                        }
+                        */
                         } else {
                             // TODO figure out what to do with Err
                         }

@@ -3,7 +3,7 @@ use crate::rabbit::RabbitMessage;
 
 use std::iter::FromIterator;
 
-// TODO implement format
+#[derive(PartialEq, Debug)]
 pub struct LogMessage {
     pub deployment_identifier: String,
     pub message: String,
@@ -49,4 +49,15 @@ impl RabbitMessage<LogMessage> for LogMessage {
 
         (msg.deployment_identifier.clone(), msg)
     }
+}
+
+#[test]
+fn logmessage_is_invertible() {
+    let mut left = LogMessage::new("deployid");
+    left.update_message("deployment is running");
+    let data = left.build_message();
+
+    let (id, right) = LogMessage::deconstruct_message(&data);
+    assert_eq!(id, "deployid");
+    assert_eq!(left, right);
 }

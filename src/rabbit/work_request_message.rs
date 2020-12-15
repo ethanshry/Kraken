@@ -3,7 +3,7 @@ use crate::rabbit::RabbitMessage;
 use std::iter::FromIterator;
 
 /// Defines the type of request we are recieving. This informs the schema the data is packed/sent in
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum WorkRequestType {
     RequestDeployment,
     CancelDeployment,
@@ -33,7 +33,7 @@ impl WorkRequestType {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 /// Message Type used when the Orchestrator is requesting work from a node
 /// This message has multiple formats, which are represented by the request_type
 /// This request_type is then used to encode and decode the rest of the rabbitmq message
@@ -122,4 +122,18 @@ impl RabbitMessage<WorkRequestMessage> for WorkRequestMessage {
 
         (res[0].clone(), msg)
     }
+}
+
+#[test]
+fn workrequestmessage_is_invertible() {
+    let left = WorkRequestMessage::new(
+        WorkRequestType::RequestDeployment,
+        Some("deployid"),
+        Some("http://github.com"),
+        None,
+    );
+    let data = left.build_message();
+
+    let (_, right) = WorkRequestMessage::deconstruct_message(&data);
+    assert_eq!(left, right);
 }

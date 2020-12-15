@@ -1,11 +1,11 @@
 //! Defines the Orchestrator role, which manages work for all devices on the platform
+use super::{ExecutionFaliure, Executor, GenericNode, SetupFaliure, Task};
 use crate::db::{Database, ManagedDatabase};
 use crate::file_utils::{append_to_file, clear_tmp, copy_dir_contents_to_static};
 use crate::git_utils::clone_remote_branch;
 use crate::gql_model::{ApplicationStatus, Node, Service, ServiceStatus};
 use crate::gql_schema::{Mutation, Query};
 use crate::network::wait_for_good_healthcheck;
-use crate::platform_executor::{ExecuteFaliure, GenericNode, SetupFaliure, Task};
 use crate::rabbit::{
     deployment_message::DeploymentMessage,
     log_message::LogMessage,
@@ -13,7 +13,8 @@ use crate::rabbit::{
     work_request_message::{WorkRequestMessage, WorkRequestType},
     QueueLabel, RabbitMessage,
 };
-use futures::{future, FutureExt};
+use async_trait::async_trait;
+use futures::future;
 use log::{info, warn};
 use std::fs;
 use std::process::Command;
@@ -21,7 +22,7 @@ use std::sync::{Arc, Mutex};
 
 /// Only one device on the network has the Orchestrator role at a single time
 /// Handles coordination of all other nodes
-pub struct Orchestrator {
+pub struct OrchestrationExecutor {
     /// A handle to the rocket.rs http server task
     api_server: Option<tokio::task::JoinHandle<()>>,
     /// A reference to the Database containing information about the platform
@@ -29,7 +30,7 @@ pub struct Orchestrator {
 }
 
 /// Spins up a Rocket API Server for the orchestration node
-pub fn create_api_server(o: &Orchestrator) -> tokio::task::JoinHandle<()> {
+pub fn create_api_server(o: &OrchestrationExecutor) -> tokio::task::JoinHandle<()> {
     let options = rocket_cors::CorsOptions {
         ..Default::default()
     }
@@ -61,7 +62,7 @@ pub fn create_api_server(o: &Orchestrator) -> tokio::task::JoinHandle<()> {
 }
 
 /// Pulls the Kraken-UI to be served by the API Server
-async fn fetch_ui(o: &Orchestrator) {
+async fn fetch_ui(o: &OrchestrationExecutor) {
     if &std::env::var("SHOULD_CLONE_UI").unwrap_or_else(|_| "YES".into())[..] == "NO" {
         warn!(
             "ENV is configured to skip UI download and compile, this may not be desired behaviour"
@@ -140,8 +141,22 @@ async fn fetch_ui(o: &Orchestrator) {
 
 /// Deploys a new RabbitMQ instance to the local machine
 /// TODO unbind this from the makefile (#52)
-pub async fn deploy_rabbit_instance(node: &GenericNode, o: &Orchestrator) -> Result<(), String> {
-    match Command::new("make").arg("spinup-rabbit").output() {
+pub async fn deploy_rabbit_instance(
+    node: &GenericNode,
+    o: &OrchestrationExecutor,
+) -> Result<(), String> {
+    match Command::new("docker")
+        .arg("run")
+        .arg("-d")
+        .arg("--hostname")
+        .arg("rabbitmq.service.dev")
+        .arg("-p")
+        .arg("5672:5672")
+        .arg("-p")
+        .arg("15672:15672")
+        .arg("rabbitmq:3-management")
+        .output()
+    {
         Ok(_) => {
             || -> () {
                 let arc = o.db_ref.clone();
@@ -206,233 +221,247 @@ pub async fn validate_deployment(git_url: &str) -> Result<String, ()> {
     }
 }
 
-impl Orchestrator {
+impl OrchestrationExecutor {
     /// Creates a new Orchestrator Object
-    pub fn new() -> Orchestrator {
+    pub fn new() -> OrchestrationExecutor {
         let db = Database::new();
-        Orchestrator {
+        OrchestrationExecutor {
             api_server: None,
             db_ref: Arc::new(Mutex::new(db)),
         }
     }
 }
 
-/// The tasks associated with setting up this role.
-/// For an orchestrator, this involves setting up the RabbitMQ server, as well as the rocket.rs server, and establishing queue consumers for messages
-pub async fn setup(node: &mut GenericNode, o: &mut Orchestrator) -> Result<(), SetupFaliure> {
-    let arc = o.db_ref.clone();
-    let mut db = arc.lock().unwrap();
-    db.insert_node(&Node::new(
-        &node.system_id,
-        "Placeholder Model",
-        0,
-        0,
-        0,
-        0.0,
-    ));
-    drop(db);
-
-    // clear all tmp files
-    clear_tmp();
-
-    fs::create_dir_all("log").unwrap();
-
-    // download site
-    let ui = fetch_ui(o);
-
-    let rabbit = deploy_rabbit_instance(&node, &o);
-
-    let tasks = future::join(ui, rabbit);
-    let (_ui_res, _rabbit_res) = tasks.await;
-
-    // Validate connection is possible
-    match crate::platform_executor::connect_to_rabbit_instance(&node.rabbit_addr).await {
-        Ok(b) => node.broker = Some(b),
-        Err(e) => {
-            warn!("{}", e);
-            return Err(SetupFaliure::NoRabbit);
+#[async_trait]
+impl Executor for OrchestrationExecutor {
+    /// The tasks associated with setting up this role.
+    /// Workers are primarilly concerned with connecting to RabbitMQ, and establishing necesarry queues
+    async fn setup(&mut self, node: &mut GenericNode) -> Result<(), SetupFaliure> {
+        // Put DB interaction in block scope
+        // This prevents us from needing a `Send` `MutexGuard`
+        {
+            let arc = self.db_ref.clone();
+            let mut db = arc.lock().unwrap();
+            db.insert_node(&Node::new(
+                &node.system_id,
+                "Placeholder Model",
+                0,
+                0,
+                0,
+                0.0,
+            ));
         }
-    }
+        // clear all tmp files
+        clear_tmp();
 
-    info!("Succesfully established RabbitMQ service");
+        fs::create_dir_all("log").unwrap();
 
-    // Unwrap is safe here because we will have returned Err if broker is None
-    node.broker
-        .as_ref()
-        .unwrap()
-        .declare_queue(QueueLabel::Sysinfo.as_str())
-        .await;
+        // download site
+        let ui = fetch_ui(self);
 
-    node.broker
-        .as_ref()
-        .unwrap()
-        .declare_queue(QueueLabel::Deployment.as_str())
-        .await;
+        let rabbit = deploy_rabbit_instance(&node, &self);
 
-    node.broker
-        .as_ref()
-        .unwrap()
-        .declare_queue(QueueLabel::Log.as_str())
-        .await;
+        let tasks = future::join(ui, rabbit);
+        let (_ui_res, _rabbit_res) = tasks.await;
 
-    // consume node information queue(s)
-    let sysinfo_consumer = {
-        let arc = o.db_ref.clone();
-        let system_uuid = node.system_id.clone();
-        let addr = node.rabbit_addr.clone();
-        let handler = move |data: Vec<u8>| {
-            let (node, message) = SysinfoMessage::deconstruct_message(&data);
-            // TODO clean up all this unsafe unwrapping
-            let mut db = arc.lock().unwrap();
-            if let Some(n) = db.get_node(&node) {
-                let mut new_node = n;
-                new_node.set_id(&node);
-                new_node.update(
-                    message.ram_free,
-                    message.ram_used,
-                    message.uptime,
-                    message.load_avg_5,
-                );
-                db.insert_node(&new_node);
-            } else {
-                let new_node = crate::gql_model::Node::from_incomplete(
-                    &node,
-                    None,
-                    Some(message.ram_free),
-                    Some(message.ram_used),
-                    Some(message.uptime),
-                    Some(message.load_avg_5),
-                    None,
-                    None,
-                );
-                db.insert_node(&new_node);
+        // Validate connection is possible
+        match Self::connect_to_rabbit_instance(&node.rabbit_addr).await {
+            Ok(b) => node.broker = Some(b),
+            Err(e) => {
+                warn!("{}", e);
+                return Err(SetupFaliure::NoRabbit);
             }
-        };
-        tokio::spawn(async move {
-            let broker = match crate::platform_executor::connect_to_rabbit_instance(&addr).await {
-                Ok(b) => b,
-                Err(_) => panic!("Could not establish rabbit connection"),
-            };
-            broker
-                .consume_queue(&system_uuid, QueueLabel::Sysinfo.as_str(), &handler)
-                .await;
-        })
-    };
-    node.queue_consumers.push(Task {
-        task: sysinfo_consumer,
-        label: String::from(QueueLabel::Sysinfo.as_str()),
-    });
+        }
 
-    // consume deployment status queue
-    let deployment_consumer = {
-        let arc = o.db_ref.clone();
+        info!("Succesfully established RabbitMQ service");
 
-        let system_uuid = node.system_id.clone();
-        let addr = node.rabbit_addr.clone();
-        let handler = move |data: Vec<u8>| {
-            let (node, message) = DeploymentMessage::deconstruct_message(&data);
+        // Unwrap is safe here because we will have returned Err if broker is None
+        node.broker
+            .as_ref()
+            .unwrap()
+            .declare_queue(QueueLabel::Sysinfo.as_str())
+            .await;
 
-            // TODO add info to the db
-            let mut db = arc.lock().unwrap();
-            let deployment = db.get_deployment(&message.deployment_id);
-            match deployment {
-                Some(d) => {
-                    let mut updated_deployment = d.clone();
-                    updated_deployment.update_status(message.deployment_status.clone());
-                    db.update_deployment(&message.deployment_id, &updated_deployment);
-                    info!(
-                        "{} : Deployment {}\n\t{} : {}",
-                        node,
-                        message.deployment_id,
-                        message.deployment_status,
-                        message.deployment_status_description
+        node.broker
+            .as_ref()
+            .unwrap()
+            .declare_queue(QueueLabel::Deployment.as_str())
+            .await;
+
+        node.broker
+            .as_ref()
+            .unwrap()
+            .declare_queue(QueueLabel::Log.as_str())
+            .await;
+
+        // consume node information queue(s)
+        let sysinfo_consumer = {
+            let arc = self.db_ref.clone();
+            let system_uuid = node.system_id.clone();
+            let addr = node.rabbit_addr.clone();
+            let handler = move |data: Vec<u8>| {
+                let (node, message) = SysinfoMessage::deconstruct_message(&data);
+                // TODO clean up all this unsafe unwrapping
+                let mut db = arc.lock().unwrap();
+                if let Some(n) = db.get_node(&node) {
+                    let mut new_node = n;
+                    new_node.set_id(&node);
+                    new_node.update(
+                        message.ram_free,
+                        message.ram_used,
+                        message.uptime,
+                        message.load_avg_5,
                     );
+                    db.insert_node(&new_node);
+                } else {
+                    let new_node = crate::gql_model::Node::from_incomplete(
+                        &node,
+                        None,
+                        Some(message.ram_free),
+                        Some(message.ram_used),
+                        Some(message.uptime),
+                        Some(message.load_avg_5),
+                        None,
+                        None,
+                    );
+                    db.insert_node(&new_node);
                 }
-                None => {
-                    warn!("Recieved the following deployment info for a deployment which does not exist in the database:\n{} : Deployment {}\n\t{} : {}", node,
+            };
+            tokio::spawn(async move {
+                let broker = match Self::connect_to_rabbit_instance(&addr).await {
+                    Ok(b) => b,
+                    Err(_) => panic!("Could not establish rabbit connection"),
+                };
+                broker
+                    .consume_queue(&system_uuid, QueueLabel::Sysinfo.as_str(), &handler)
+                    .await;
+            })
+        };
+        node.queue_consumers.push(Task {
+            task: sysinfo_consumer,
+            label: String::from(QueueLabel::Sysinfo.as_str()),
+        });
+
+        // consume deployment status queue
+        let deployment_consumer = {
+            let arc = self.db_ref.clone();
+
+            let system_uuid = node.system_id.clone();
+            let addr = node.rabbit_addr.clone();
+            let handler = move |data: Vec<u8>| {
+                let (node, message) = DeploymentMessage::deconstruct_message(&data);
+
+                // TODO add info to the db
+                let mut db = arc.lock().unwrap();
+                let deployment = db.get_deployment(&message.deployment_id);
+                match deployment {
+                    Some(d) => {
+                        let mut updated_deployment = d.clone();
+                        updated_deployment.update_status(message.deployment_status.clone());
+                        db.update_deployment(&message.deployment_id, &updated_deployment);
+                        info!(
+                            "{} : Deployment {}\n\t{} : {}",
+                            node,
+                            message.deployment_id,
+                            message.deployment_status,
+                            message.deployment_status_description
+                        );
+                    }
+                    None => {
+                        warn!("Recieved the following deployment info for a deployment which does not exist in the database:\n{} : Deployment {}\n\t{} : {}", node,
                     message.deployment_id,
                     message.deployment_status,
                     message.deployment_status_description);
+                    }
                 }
-            }
-        };
-
-        tokio::spawn(async move {
-            let broker = match crate::platform_executor::connect_to_rabbit_instance(&addr).await {
-                Ok(b) => b,
-                Err(_) => panic!("Could not establish rabbit connection"),
             };
-            broker
-                .consume_queue(&system_uuid, QueueLabel::Deployment.as_str(), &handler)
-                .await;
-        })
-    };
-    node.queue_consumers.push(Task {
-        task: deployment_consumer,
-        label: String::from(QueueLabel::Deployment.as_str()),
-    });
 
-    // consume deployment log queue
-    let log_consumer = {
-        let system_uuid = node.system_id.clone();
-        let addr = node.rabbit_addr.clone();
-        let handler = move |data: Vec<u8>| {
-            let (deployment_id, message) = LogMessage::deconstruct_message(&data);
-            append_to_file(&format!("log/{}.log", &deployment_id), &message.message);
+            tokio::spawn(async move {
+                let broker = match Self::connect_to_rabbit_instance(&addr).await {
+                    Ok(b) => b,
+                    Err(_) => panic!("Could not establish rabbit connection"),
+                };
+                broker
+                    .consume_queue(&system_uuid, QueueLabel::Deployment.as_str(), &handler)
+                    .await;
+            })
         };
-        tokio::spawn(async move {
-            let broker = match crate::platform_executor::connect_to_rabbit_instance(&addr).await {
-                Ok(b) => b,
-                Err(_) => panic!("Could not establish rabbit connection"),
+        node.queue_consumers.push(Task {
+            task: deployment_consumer,
+            label: String::from(QueueLabel::Deployment.as_str()),
+        });
+
+        // consume deployment log queue
+        let log_consumer = {
+            let system_uuid = node.system_id.clone();
+            let addr = node.rabbit_addr.clone();
+            let handler = move |data: Vec<u8>| {
+                let (deployment_id, message) = LogMessage::deconstruct_message(&data);
+                append_to_file(&format!("log/{}.log", &deployment_id), &message.message);
             };
-            broker
-                .consume_queue(&system_uuid, QueueLabel::Log.as_str(), &handler)
-                .await;
-        })
-    };
-    node.queue_consumers.push(Task {
-        task: log_consumer,
-        label: String::from(QueueLabel::Log.as_str()),
-    });
+            tokio::spawn(async move {
+                let broker = match Self::connect_to_rabbit_instance(&addr).await {
+                    Ok(b) => b,
+                    Err(_) => panic!("Could not establish rabbit connection"),
+                };
+                broker
+                    .consume_queue(&system_uuid, QueueLabel::Log.as_str(), &handler)
+                    .await;
+            })
+        };
+        node.queue_consumers.push(Task {
+            task: log_consumer,
+            label: String::from(QueueLabel::Log.as_str()),
+        });
 
-    o.api_server = Some(create_api_server(o));
-    Ok(())
-}
+        self.api_server = Some(create_api_server(self));
+        Ok(())
+    }
 
-/// Logic which should be executed every iteration
-/// Orchestrators are primarilly focused on determing if deployment requests are valid, and distreibuting them to the best-suited worker device
-pub async fn execute(node: &GenericNode, o: &Orchestrator) -> Result<(), ExecuteFaliure> {
-    // Todo look for work to distribute and do it
-    async || -> () {
-        // Look through deployments for new deployments which need to be scheduled
-        let arc = o.db_ref.clone();
-        let db = arc.lock().unwrap();
-        let deployments = db.get_deployments();
-        drop(db);
+    /// Logic which should be executed every iteration
+    /// Primarilly focused on handling deployment/kill/update requests, and processing logs
+    async fn execute(&mut self, node: &mut GenericNode) -> Result<(), ExecutionFaliure> {
+        // Todo look for work to distribute and do it
+
+        let deployments;
+        {
+            // Look through deployments for new deployments which need to be scheduled
+            let arc = self.db_ref.clone();
+            let db = arc.lock().unwrap();
+            deployments = db.get_deployments();
+        }
         if let Some(d) = deployments {
             for mut deployment in d {
                 match deployment.status.0 {
                     ApplicationStatus::DeploymentRequested => {
                         // Look for free nodes to distribute tasks to
-                        deployment.update_status(ApplicationStatus::ValidatingDeploymentData);
-                        let mut db = arc.lock().unwrap();
-                        db.update_deployment(&deployment.id, &deployment);
-                        drop(db);
-
+                        {
+                            let arc = self.db_ref.clone();
+                            deployment.update_status(ApplicationStatus::ValidatingDeploymentData);
+                            let mut db = arc.lock().unwrap();
+                            db.update_deployment(&deployment.id, &deployment);
+                        }
                         match validate_deployment(&deployment.src_url).await {
                             Err(_) => {
                                 warn!("Deployment failed validation {}", &deployment.id);
-                                let mut db = arc.lock().unwrap();
-                                deployment.update_status(ApplicationStatus::Errored);
-                                db.update_deployment(&deployment.id, &deployment);
-                                drop(db);
+                                {
+                                    let arc = self.db_ref.clone();
+                                    let mut db = arc.lock().unwrap();
+                                    deployment.update_status(ApplicationStatus::Errored);
+                                    db.update_deployment(&deployment.id, &deployment);
+                                }
                             }
                             Ok(commit) => {
-                                let mut db = arc.lock().unwrap();
-                                deployment.update_status(ApplicationStatus::DelegatingDeployment);
-                                deployment.commit = commit;
-                                db.update_deployment(&deployment.id, &deployment);
-                                let nodes = db.get_nodes();
+                                let nodes;
+                                {
+                                    let arc = self.db_ref.clone();
+                                    let mut db = arc.lock().unwrap();
+                                    deployment
+                                        .update_status(ApplicationStatus::DelegatingDeployment);
+                                    deployment.commit = commit;
+                                    db.update_deployment(&deployment.id, &deployment);
+                                    nodes = db.get_nodes();
+                                }
                                 info!("{:?}", nodes);
                                 match nodes {
                                     None => {
@@ -441,15 +470,19 @@ pub async fn execute(node: &GenericNode, o: &Orchestrator) -> Result<(), Execute
                                             &deployment.id
                                         );
                                         deployment.update_status(ApplicationStatus::Errored);
-                                        db.update_deployment(&deployment.id, &deployment);
+                                        {
+                                            let arc = self.db_ref.clone();
+                                            let mut db = arc.lock().unwrap();
+
+                                            db.update_deployment(&deployment.id, &deployment);
+                                        }
                                     }
                                     Some(nodes) => {
                                         let mut curr_node = &nodes[0];
                                         for node in nodes.iter() {
                                             // For now, pick the node with the fewest application instances
                                             // TODO make this process smart
-                                            if node.deployments.len()
-                                                < curr_node.deployments.len()
+                                            if node.deployments.len() < curr_node.deployments.len()
                                             {
                                                 curr_node = node;
                                             }
@@ -457,10 +490,12 @@ pub async fn execute(node: &GenericNode, o: &Orchestrator) -> Result<(), Execute
 
                                         deployment.node = curr_node.id.clone();
                                         deployment.update_status(ApplicationStatus::Errored);
-                                        db.update_deployment(&deployment.id, &deployment);
+                                        {
+                                            let arc = self.db_ref.clone();
+                                            let mut db = arc.lock().unwrap();
 
-                                        // curr_node will recieve the work
-
+                                            db.update_deployment(&deployment.id, &deployment);
+                                        }
                                         // Send work to curr_node
                                         let msg = WorkRequestMessage::new(
                                             WorkRequestType::RequestDeployment,
@@ -472,12 +507,13 @@ pub async fn execute(node: &GenericNode, o: &Orchestrator) -> Result<(), Execute
                                             node.broker.as_ref().unwrap().get_channel().await;
                                         msg.send(&publisher, &curr_node.id).await;
 
-                                        db.add_deployment_to_node(
-                                            &curr_node.id,
-                                            deployment.id,
-                                        )
-                                        .unwrap();
-                                        // Deployment has been scheduled
+                                        {
+                                            let arc = self.db_ref.clone();
+                                            let mut db = arc.lock().unwrap();
+
+                                            db.add_deployment_to_node(&curr_node.id, deployment.id)
+                                                .unwrap();
+                                        } // Deployment has been scheduled
                                     }
                                 }
                             }
@@ -498,11 +534,14 @@ pub async fn execute(node: &GenericNode, o: &Orchestrator) -> Result<(), Execute
                                         "Update on remote for deployment {} detected, redeploying",
                                         &deployment.id
                                     );
-                                    let mut db = arc.lock().unwrap();
-                                    deployment
-                                        .update_status(ApplicationStatus::DelegatingDestruction);
-                                    db.update_deployment(&deployment.id, &deployment);
-                                    drop(db);
+                                    {
+                                        let arc = self.db_ref.clone();
+                                        let mut db = arc.lock().unwrap();
+                                        deployment.update_status(
+                                            ApplicationStatus::DelegatingDestruction,
+                                        );
+                                        db.update_deployment(&deployment.id, &deployment);
+                                    }
                                     let msg = WorkRequestMessage::new(
                                         WorkRequestType::CancelDeployment,
                                         Some(&deployment.id),
@@ -521,20 +560,22 @@ pub async fn execute(node: &GenericNode, o: &Orchestrator) -> Result<(), Execute
                                     msg.send(&publisher, &deployment.node).await;
                                 } else {
                                     info!("Update requested for up-to-date deployment");
+                                    let arc = self.db_ref.clone();
                                     let mut db = arc.lock().unwrap();
                                     deployment.update_status(ApplicationStatus::Running);
                                     db.update_deployment(&deployment.id, &deployment);
-                                    drop(db);
                                 }
                             }
                         }
                     }
                     ApplicationStatus::DestructionRequested => {
-                        let mut db = arc.lock().unwrap();
-                        deployment.update_status(ApplicationStatus::DelegatingDestruction);
-                        db.update_deployment(&deployment.id, &deployment);
-                        db.remove_deployment_from_nodes(&deployment.id);
-                        drop(db);
+                        {
+                            let arc = self.db_ref.clone();
+                            let mut db = arc.lock().unwrap();
+                            deployment.update_status(ApplicationStatus::DelegatingDestruction);
+                            db.update_deployment(&deployment.id, &deployment);
+                            db.remove_deployment_from_nodes(&deployment.id);
+                        }
                         let msg = WorkRequestMessage::new(
                             WorkRequestType::CancelDeployment,
                             Some(&deployment.id),
@@ -548,7 +589,6 @@ pub async fn execute(node: &GenericNode, o: &Orchestrator) -> Result<(), Execute
                 }
             }
         }
-    }()
-    .await;
-    Ok(())
+        Ok(())
+    }
 }
