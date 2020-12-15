@@ -74,34 +74,6 @@ impl Executor for WorkerExecutor {
                 .consume_queue_incr(&node.system_id, &node.system_id)
                 .await,
         );
-        /*
-        let work_request_consumer = {
-            let system_uuid = node.system_id.clone();
-            let addr = node.rabbit_addr.clone();
-            let arc = self.work_requests.clone();
-
-            let handler = move |data: Vec<u8>| {
-                let mut work_queue = arc.lock().unwrap();
-                let (_node, message) = WorkRequestMessage::deconstruct_message(&data);
-                info!("Recieved Message on {}'s Work Queue", &system_uuid);
-                work_queue.add(message).unwrap();
-            };
-            let system_uuid = node.system_id.clone();
-            tokio::spawn(async move {
-                let broker = match Self::connect_to_rabbit_instance(&addr).await {
-                    Ok(b) => b,
-                    Err(_) => panic!("Could not establish rabbit connection"),
-                };
-                broker
-                    .consume_queue(&system_uuid, &system_uuid, &handler)
-                    .await;
-            })
-        };
-        node.queue_consumers.push(Task {
-            task: work_request_consumer,
-            label: String::from(&node.system_id),
-        });
-        */
 
         Ok(())
     }
