@@ -5,14 +5,14 @@ use std::string::ToString; // for strum enum to string
 use std::time::SystemTime;
 use strum_macros::{Display, EnumString};
 
-#[derive(Serialize, Debug, Deserialize, Clone, juniper::GraphQLEnum)]
+#[derive(Serialize, Debug, Deserialize, Clone, PartialEq, juniper::GraphQLEnum)]
 pub enum ServiceStatus {
     OK,
     ERRORED,
 }
 
 // Specify GraphQL type with field resolvers (i.e. no computed resolvers)
-#[derive(Serialize, Debug, Deserialize, Clone, juniper::GraphQLObject)]
+#[derive(Serialize, Debug, Deserialize, Clone, PartialEq, juniper::GraphQLObject)]
 #[graphql(description = "A Service installed on the device to support the platform")]
 pub struct Service {
     name: String,
@@ -33,7 +33,7 @@ impl Service {
 }
 
 //#[derive(juniper::GraphQLObject)]
-#[derive(Serialize, Debug, Deserialize)]
+#[derive(Serialize, Debug, Deserialize, PartialEq)]
 pub struct Node {
     pub id: String,
     pub model: String,
@@ -41,7 +41,7 @@ pub struct Node {
     ram_free: u64,
     ram_used: u64,
     load_avg_5: f32,
-    pub application_instances: Vec<String>,
+    pub deployments: Vec<String>,
     services: Vec<Service>,
 }
 
@@ -54,14 +54,14 @@ impl Clone for Node {
             ram_used: self.ram_used,
             load_avg_5: self.load_avg_5,
             uptime: self.uptime,
-            application_instances: Vec::new(),
+            deployments: Vec::new(),
             services: Vec::new(),
         };
         for service in self.services.iter() {
             node.services.push(service.clone());
         }
-        for app in self.application_instances.iter() {
-            node.application_instances.push(app.clone());
+        for app in self.deployments.iter() {
+            node.deployments.push(app.clone());
         }
 
         node
@@ -86,7 +86,7 @@ impl Node {
             ram_free,
             ram_used,
             load_avg_5,
-            application_instances: vec![],
+            deployments: vec![],
             services: vec![],
         }
     }
@@ -166,7 +166,7 @@ impl Node {
     }
 
     pub fn add_application_instance(&mut self, app: &str) {
-        self.application_instances.push(app.to_owned());
+        self.deployments.push(app.to_owned());
     }
 }
 
@@ -246,7 +246,7 @@ impl Orchestrator {
 }
 
 /// Information related to a specific Deployment
-#[derive(Serialize, Debug, Deserialize)]
+#[derive(Serialize, Debug, Deserialize, PartialEq)]
 pub struct Deployment {
     pub id: String,
     pub src_url: String,

@@ -1,12 +1,15 @@
 SHELL := /bin/bash
 
-.PHONY: documentation lint spinup-rabbit spinup-dns cleanup reboot
+.PHONY: documentation lint cargoclean spinup-rabbit spinup-dns cleanup reboot
 
 documentation:
 	cargo doc --open
 
 lint:
 	cargo clippy
+
+cargoclean:
+	cargo sweep -t 15
 
 spinup-rabbit:
 	docker run -d --hostname rabbitmq.service.dev -p 5672:5672 -p 15672:15672 rabbitmq:3-management

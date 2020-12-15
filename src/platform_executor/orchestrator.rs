@@ -448,8 +448,8 @@ pub async fn execute(node: &GenericNode, o: &Orchestrator) -> Result<(), Execute
                                         for node in nodes.iter() {
                                             // For now, pick the node with the fewest application instances
                                             // TODO make this process smart
-                                            if node.application_instances.len()
-                                                < curr_node.application_instances.len()
+                                            if node.deployments.len()
+                                                < curr_node.deployments.len()
                                             {
                                                 curr_node = node;
                                             }
@@ -472,7 +472,7 @@ pub async fn execute(node: &GenericNode, o: &Orchestrator) -> Result<(), Execute
                                             node.broker.as_ref().unwrap().get_channel().await;
                                         msg.send(&publisher, &curr_node.id).await;
 
-                                        db.add_application_instance_to_node(
+                                        db.add_deployment_to_node(
                                             &curr_node.id,
                                             deployment.id,
                                         )
@@ -533,7 +533,7 @@ pub async fn execute(node: &GenericNode, o: &Orchestrator) -> Result<(), Execute
                         let mut db = arc.lock().unwrap();
                         deployment.update_status(ApplicationStatus::DelegatingDestruction);
                         db.update_deployment(&deployment.id, &deployment);
-                        db.remove_application_instance_from_nodes(&deployment.id);
+                        db.remove_deployment_from_nodes(&deployment.id);
                         drop(db);
                         let msg = WorkRequestMessage::new(
                             WorkRequestType::CancelDeployment,

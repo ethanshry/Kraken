@@ -45,6 +45,7 @@ pub async fn scan_network_for_machines(port: u16) -> Vec<String> {
 
             let mut open_addrs = vec![];
             // TODO maybe look into https://github.com/rayon-rs/rayon to make this better : see #45
+            // Shoutout to https://stackoverflow.com/questions/61481079/how-can-i-join-all-the-futures-in-a-vector-without-cancelling-on-failure-like-jo for this magic
             let open_addr_futures: Vec<_> = addrs_to_scan
                 .iter()
                 .map(|addr| async move {

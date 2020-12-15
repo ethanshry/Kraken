@@ -4,10 +4,11 @@
 
 #![feature(proc_macro_hygiene, decl_macro, async_closure)]
 #![allow(dead_code)]
-#![warn(missing_docs, rust_2018_idioms)]
+#![warn(missing_docs, rust_2018_idioms, missing_debug_implementations, unused_extern_crates)]
 
 #[macro_use]
 extern crate juniper;
+extern crate strum_macros;
 
 mod api_routes;
 mod db;

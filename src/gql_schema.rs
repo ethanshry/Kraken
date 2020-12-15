@@ -44,8 +44,8 @@ impl Node {
         self.current_ram_percent()
     }
 
-    fn application_instances(&self) -> Vec<String> {
-        self.application_instances.clone()
+    fn deployments(&self) -> Vec<String> {
+        self.deployments.clone()
     }
 
     // TODO figure out what is going on with this
