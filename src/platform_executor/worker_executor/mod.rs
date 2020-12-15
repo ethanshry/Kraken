@@ -12,10 +12,7 @@ use crate::rabbit::{
     QueueLabel, RabbitBroker, RabbitMessage,
 };
 use async_trait::async_trait;
-use futures::future::UnwrapOrElse;
 use log::{error, info, warn};
-use queues::{IsQueue, Queue};
-use std::sync::{Arc, Mutex};
 use sysinfo::SystemExt;
 
 /// This role is common to all Kraken devices.

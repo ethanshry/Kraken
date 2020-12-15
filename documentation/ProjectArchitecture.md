@@ -4,7 +4,7 @@
 
 The Kraken App Deployment Platform is a loose collection of devices all running the Kraken agent. Each device is given a specific set of tasks to perform in order to provide the full set of platform functionalities.
 
-The Kraken agent is written in Rust. It provides the backend worker and orchestrator features to support the platform, which are covered in more detail in [Workers and Orchestration](##Workers-and-Orchestration). The ways the devices communicate with each other are covered in [Communication](##Communication). Finally, the specifics of how deployments are handled are covered in [Deployments](##Deployments).
+The Kraken agent is written in Rust. It provides the backend worker and orchestrator features to support the platform, which are covered in more detail in [Executors](##Executors). The ways the devices communicate with each other are covered in [Communication](##Communication). Finally, the specifics of how deployments are handled are covered in [Deployments](##Deployments).
 
 The frontend experience is a React+AntDesign project, which lives [here](https://github.com/ethanshry/Kraken-UI).
 
@@ -48,61 +48,69 @@ async fn main(){
 
     if node_mode == NodeMode::ORCHESTRATOR {
 
-        let mut orchestrator = platform_executor::orchestrator::Orchestrator::new();
-        platform_executor::orchestrator::setup(&mut node, &mut orchestrator).await
+        let mut orchestrator = platform_executor::orchestration_executor::OrchestrationExecutor::new();
+        orchestrator.setup(&mut node).await
 
-        let mut worker = platform_executor::worker::Worker::new();
-        platform_executor::worker::setup(&mut node, &mut worker).await;
+        let mut worker = platform_executor::worker_executor::WorkerExecutor::new();
+        worker.setup(&mut node).await;
 
     } else {
 
-        let mut worker = platform_executor::worker::Worker::new();
-        platform_executor::worker::setup(&mut node, &mut worker).await;
+        let mut worker = platform_executor::worker_executor::WorkerExecutor::new();
+        worker.setup(&mut node).await;
 
     }
 
     loop {
 
         if node_mode == NodeMode::ORCHESTRATOR {
-            platform_executor::orchestrator::execute(&node, &orchestrator).await
+            orchestrator.execute(&mut node).await
         }
 
-        platform_executor::worker::execute(&mut node, &mut worker).await
+        worker.execute(&mut node).await
     }
 }
 ```
 
 However, this `loop` process is not entirely linear. RabbitMQ messages are handled and consumed asyncronously, as well as HTTP and GQL requests for the orchestrator, so typically the work an orchestrator or worker has to do involves checking to see what has changed in the state of their local databses/deployments, and reacting to them.
 
-## Workers and Orchestration
+## Executors
 
 There are a variety of features which a Kraken agent must perform. Broadly speaking, these fall into two categories: features required of a Worker (like managing deployments) and features required by an orchestrator (storing information about the state of all nodes on the platform).
 
+The `NodeMode` struct defines which type of Node we are working as. Different NodeModes have a different set of `Executors` which fall under their perview, and these `Executors` are what perform the work required by different roles
+
 ![platform communication](../images/platform_node_roles.png)
 
-Therefore you can think of every device as filling at least one, and possibly two roles. Every device is a worker device. Worker devices must do the following:
+Therefore you can think of every device as having at least a single Executor. Every device has a `WorkerExecutor`, which does the following:
 
-- Report their system statistics
-- Manage any requests for local deployments (including updates, teardowns, and faliures)
-- Forward logs of local deployments to the orchestrator
-- Ensure they have a valid connection to a platform in the case of orchestrator or critical service faliure
-- Serve as a rollover canidate in the case of orchestrator faliure. This might include being a backup device for platform data
+- Reports their system statistics
+- Manages any requests for local deployments (including updates, teardowns, and faliures)
+- Forwards logs of local deployments to the orchestrator
+- Ensures they have a valid connection to a platform in the case of orchestrator or critical service faliure
+- Serves as a rollover canidate in the case of orchestrator faliure. This might include being a backup device for platform data
 
-One node on the network, the orchestrator, has an additional set of features. The orchestrator must:
+One node on the network, the orchestrator, has an additional executor, the `OrchestrationExecutor`, which:
 
-- Provide an HTTP server to allow other agents to discover the platform, and provide the platform UI experience
-- Provide a GQL server to provide data for the UI experience
-- Maintain logs for all deployments
-- Coordinate requests from the UI experience (i.e. deployment, teardown, update), and distribute those requests to workers
-- Monitor the platform for deployment/node faliure
-- Ensure critical platform services exist to allow the platform to function (i.e. a RabbitMQ instance)
+- Provides an HTTP server to allow other agents to discover the platform, and provide the platform UI experience
+- Provides a GQL server to provide data for the UI experience
+- Maintains logs for all deployments
+- Coordinates requests from the UI experience (i.e. deployment, teardown, update), and distribute those requests to workers
+- Monitors the platform for deployment/node faliure
+- Ensures critical platform services exist to allow the platform to function (i.e. a RabbitMQ instance)
 
 These functions are broken down in their respective files in the `crate::platform_executor` module. Each role adheres to the following trait
 
 ```rust
-trait ExecutionNode {
-    async fn setup(&self) -> Result<(), SetupFaliure>;
-    async fn execute(&self) -> Result<(), TaskFaliure>;
+/// Defines the interface to be used by all executors on a device
+/// The executor will have setup called once, to instantiate the executor, and then will have execute called repeatedly so long as the executor is alive.
+#[async_trait]
+pub trait Executor {
+    /// Is called once to set up this node
+    async fn setup(&mut self, node: &mut GenericNode) -> Result<(), SetupFaliure>;
+    /// Is called repeatedly after setup has terminated
+    async fn execute(&mut self, node: &mut GenericNode) -> Result<(), ExecutionFaliure>;
+    // ...
 }
 ```
 

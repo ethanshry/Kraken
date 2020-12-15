@@ -66,6 +66,10 @@ pub fn create_api_server(o: &OrchestrationExecutor) -> tokio::task::JoinHandle<(
 }
 
 /// Pulls the Kraken-UI to be served by the API Server
+///
+/// # Arguments
+///
+/// * `o` - An OrchestrationExecutor with a reference to the database
 async fn fetch_ui(o: &OrchestrationExecutor) {
     if &std::env::var("SHOULD_CLONE_UI").unwrap_or_else(|_| "YES".into())[..] == "NO" {
         warn!(
@@ -116,13 +120,9 @@ async fn fetch_ui(o: &OrchestrationExecutor) {
 
     if should_update_ui {
         info!("Cloning updated UI...");
-        clone_remote_branch(
-            "https://github.com/ethanshry/Kraken-UI.git",
-            "build",
-            "tmp/site",
-        )
-        .wait()
-        .unwrap();
+        clone_remote_branch(crate::utils::UI_GIT_ADDR, "build", "tmp/site")
+            .wait()
+            .unwrap();
 
         // Build the site
         info!("Compiling Kraken-UI");
@@ -143,7 +143,11 @@ async fn fetch_ui(o: &OrchestrationExecutor) {
 }
 
 /// Deploys a new RabbitMQ instance to the local machine
-/// TODO unbind this from the makefile (#52)
+///
+/// # Arguments
+///
+/// * `node` - A GenericNode containing information about the platform
+/// * `o` - An OrchestrationExecutor with a reference to the database
 pub async fn deploy_rabbit_instance(
     node: &GenericNode,
     o: &OrchestrationExecutor,
@@ -187,6 +191,16 @@ pub async fn deploy_rabbit_instance(
 
 /// Ensures the deployment has the potential for success
 /// This includes ensuring the url is valid and the shipwreck.toml exists in the repo
+///
+/// # Arguments
+///
+/// * `git_url` - The URL to a github repository containing a shipwreck.toml
+///
+/// # Examples
+/// ```
+/// let url = validate_deployment("http://github.com/Kraken/scapenode")
+/// assert_eq!(url, Ok(_));
+/// ```
 pub async fn validate_deployment(git_url: &str) -> Result<String, ()> {
     match github_api::parse_git_url(git_url) {
         None => Err(()),
@@ -232,6 +246,14 @@ impl OrchestrationExecutor {
             api_server: None,
             db_ref: Arc::new(Mutex::new(db)),
         }
+    }
+
+    /// A wrapper around the do_db_task helper
+    /// Strictly updates the db Deplopyment to match the local one
+    fn update_deployment_in_db(&mut self, deployment: &Deployment) {
+        do_db_task(self, |db| {
+            db.update_deployment(&deployment.id, &deployment);
+        });
     }
 }
 
@@ -304,7 +326,6 @@ impl Executor for OrchestrationExecutor {
             let addr = node.rabbit_addr.clone();
             let handler = move |data: Vec<u8>| {
                 let (node, message) = SysinfoMessage::deconstruct_message(&data);
-                // TODO clean up all this unsafe unwrapping
                 let mut db = arc.lock().unwrap();
                 if let Some(n) = db.get_node(&node) {
                     let mut new_node = n;
@@ -354,7 +375,6 @@ impl Executor for OrchestrationExecutor {
             let handler = move |data: Vec<u8>| {
                 let (node, message) = DeploymentMessage::deconstruct_message(&data);
 
-                // TODO add info to the db
                 let mut db = arc.lock().unwrap();
                 let deployment = db.get_deployment(&message.deployment_id);
                 match deployment {
@@ -424,7 +444,7 @@ impl Executor for OrchestrationExecutor {
     /// Logic which should be executed every iteration
     /// Primarilly focused on handling deployment/kill/update requests, and processing logs
     async fn execute(&mut self, node: &mut GenericNode) -> Result<(), ExecutionFaliure> {
-        // Todo look for work to distribute and do it
+        // TODO look for work to distribute and do it
 
         let deployments;
         {
@@ -438,13 +458,9 @@ impl Executor for OrchestrationExecutor {
                 match deployment.status.0 {
                     ApplicationStatus::DeploymentRequested => {
                         // Look for free nodes to distribute tasks to
-                        // TODO find some better way than this to handle DB dropping linter BS
-                        {
-                            let arc = self.db_ref.clone();
-                            deployment.update_status(ApplicationStatus::ValidatingDeploymentData);
-                            let mut db = arc.lock().unwrap();
-                            db.update_deployment(&deployment.id, &deployment);
-                        }
+
+                        deployment.update_status(ApplicationStatus::ValidatingDeploymentData);
+                        self.update_deployment_in_db(&deployment);
                         match validate_deployment(&deployment.src_url).await {
                             Err(_) => {
                                 warn!("Deployment failed validation {}", &deployment.id);
@@ -458,9 +474,7 @@ impl Executor for OrchestrationExecutor {
                             Ok(commit) => {
                                 deployment.update_status(ApplicationStatus::DelegatingDeployment);
                                 deployment.commit = commit;
-                                do_db_task(self, |db| {
-                                    db.update_deployment(&deployment.id, &deployment);
-                                });
+                                self.update_deployment_in_db(&deployment);
                                 let nodes =
                                     do_db_task(self, |db| -> Option<Vec<Node>> { db.get_nodes() });
                                 info!("{:?}", nodes);
@@ -471,9 +485,7 @@ impl Executor for OrchestrationExecutor {
                                             &deployment.id
                                         );
                                         deployment.update_status(ApplicationStatus::Errored);
-                                        do_db_task(self, |db| {
-                                            db.update_deployment(&deployment.id, &deployment);
-                                        });
+                                        self.update_deployment_in_db(&deployment);
                                     }
                                     Some(nodes) => {
                                         let mut curr_node = &nodes[0];
@@ -488,9 +500,7 @@ impl Executor for OrchestrationExecutor {
 
                                         deployment.node = curr_node.id.clone();
                                         deployment.update_status(ApplicationStatus::Errored);
-                                        do_db_task(self, |db| {
-                                            db.update_deployment(&deployment.id, &deployment);
-                                        });
+                                        self.update_deployment_in_db(&deployment);
                                         // Send work to curr_node
                                         let msg = WorkRequestMessage::new(
                                             WorkRequestType::RequestDeployment,
@@ -532,9 +542,7 @@ impl Executor for OrchestrationExecutor {
                                     );
                                     deployment
                                         .update_status(ApplicationStatus::DelegatingDestruction);
-                                    do_db_task(self, |db| {
-                                        db.update_deployment(&deployment.id, &deployment);
-                                    });
+                                    self.update_deployment_in_db(&deployment);
                                     let msg = WorkRequestMessage::new(
                                         WorkRequestType::CancelDeployment,
                                         Some(&deployment.id),
@@ -554,9 +562,7 @@ impl Executor for OrchestrationExecutor {
                                 } else {
                                     info!("Update requested for up-to-date deployment");
                                     deployment.update_status(ApplicationStatus::Running);
-                                    do_db_task(self, |db| {
-                                        db.update_deployment(&deployment.id, &deployment);
-                                    });
+                                    self.update_deployment_in_db(&deployment);
                                 }
                             }
                         }

@@ -71,8 +71,8 @@ pub struct GenericNode {
     pub queue_consumers: Vec<Task>,
     pub worker_tasks: Vec<Task>,
     pub broker: Option<RabbitBroker>,
-    pub system_id: String,   // TODO common
-    pub rabbit_addr: String, // TODO common
+    pub system_id: String,
+    pub rabbit_addr: String,
     pub deployments: std::collections::LinkedList<DeploymentInfo>,
 }
 

@@ -13,6 +13,16 @@ use pnet::{datalink, ipnetwork::IpNetwork};
 const MIN_SUBNET_ADDR: u8 = 0;
 const MAX_SUBNET_ADDR: u8 = 255;
 
+/// Searches the local network for machines on the specified port
+/// Returns a Vec of addresses which have the specified port open
+/// # Arguments
+///
+/// * `port` - The port to search on
+/// # Examples
+///
+/// ```
+/// let devices = scan_network_for_machines(crate::utils::ROCKET_PORT_NO).await;
+/// ```
 pub async fn scan_network_for_machines(port: u16) -> Vec<String> {
     let mut subnet_addr: Option<[u8; 3]> = None;
     'ifaces: for iface in datalink::interfaces() {
@@ -44,7 +54,6 @@ pub async fn scan_network_for_machines(port: u16) -> Vec<String> {
             }
 
             let mut open_addrs = vec![];
-            // TODO maybe look into https://github.com/rayon-rs/rayon to make this better : see #45
             // Shoutout to https://stackoverflow.com/questions/61481079/how-can-i-join-all-the-futures-in-a-vector-without-cancelling-on-failure-like-jo for this magic
             let open_addr_futures: Vec<_> = addrs_to_scan
                 .iter()
@@ -78,21 +87,6 @@ pub async fn scan_network_for_machines(port: u16) -> Vec<String> {
                     }
                 }
             }
-            /*
-            //let results = futures::join_all(open_addrs);
-            for addr in addrs_to_scan.iter() {
-                info!("Scanning network address {}", addr);
-                if reqwest::Client::new()
-                    .get(&format!("http://{}:{}/ping", addr, port))
-                    .timeout(std::time::Duration::from_millis(500))
-                    .send()
-                    .await
-                    .is_ok()
-                {
-                    open_addrs.push(addr.to_string());
-                }
-            }
-            */
 
             info!("{:?}", open_addrs);
             return open_addrs;
@@ -100,9 +94,17 @@ pub async fn scan_network_for_machines(port: u16) -> Vec<String> {
     }
 }
 
+/// Looks for an orchestrator on the local network (i.e. an open Rocket.rs HTTP server)
+/// Returns Some(addr) if one is found, and None otherwise
+
+/// # Examples
+///
+/// ```
+/// let orchestrator = find_orchestrator_on_lan().await;
+/// assert_eq!(orchestrator, None);
+/// ```
 pub async fn find_orchestrator_on_lan() -> Option<String> {
-    // TODO drive port from ENV or config or something
-    let machines = scan_network_for_machines(8000).await; // Look for Rocket server
+    let machines = scan_network_for_machines(crate::utils::ROCKET_PORT_NO).await;
     if !machines.is_empty() {
         return Some(machines[0].to_string());
     }

@@ -241,22 +241,18 @@ impl DockerBroker {
                         if let Ok(stage) = result {
                             let bollard::service::BuildInfo {
                                 id,
-                                stream,
+                                stream: _,
                                 error,
-                                error_detail,
+                                error_detail: _,
                                 status,
                                 progress,
                                 progress_detail,
-                                aux,
+                                aux: _,
                             } = stage;
                             info!(
                                 "{:?},{:?},{:?},{:?},{:?}",
                                 id, error, status, progress, progress_detail
                             );
-                            // TODO fix
-                            // Why was I doing this?
-                            // let data = str::replace(&id.unwrap(), "\n", "");
-                            //let data = format!("{:?}", id);
                             let data = "";
                             if !data.is_empty() {
                                 log.push(format!("[KRAKEN][INFO] {}", data.to_owned()));
@@ -343,8 +339,6 @@ impl DockerBroker {
 
         let p = format!("{}/tcp", port);
 
-        // TODO this is so dumb there must be a better way
-        // but &port makes the 'exposed_ports' unhappy
         ports.insert(&p[0..p.len()], HashMap::new());
 
         let mut port_bindings = HashMap::new();
@@ -357,14 +351,14 @@ impl DockerBroker {
         );
 
         let config = Config {
-            hostname: Some("example-service.dev"), // TODO probably doesn't work right now
+            hostname: Some("example-service.dev"), // TODO doesn't work right now
             image: Some(image_id),
             attach_stdout: Some(true),
             attach_stderr: Some(true),
             exposed_ports: Some(ports),
             host_config: Some(HostConfig {
                 port_bindings: Some(port_bindings),
-                network_mode: Some(String::from("bridge")), // TODO probably doesn't work right now
+                network_mode: Some(String::from("bridge")), // TODO doesn't work right now
                 ..Default::default()
             }),
             ..Default::default()
