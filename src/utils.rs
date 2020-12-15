@@ -1,7 +1,7 @@
 //! Misc utility functions
 
-use crate::db::Database;
 use crate::gql_model::{ApplicationStatus, Orchestrator, OrchestratorInterface, Platform};
+use crate::platform_executor::orchestration_executor::db::Database;
 use std::fs;
 use std::io::Write;
 use uuid::Uuid;

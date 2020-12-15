@@ -1,4 +1,4 @@
-/// Utility functions for the rabbit module
+//! Utility functions for the rabbit module
 use super::RabbitBroker;
 use futures::task::Poll;
 use futures_util::stream::StreamExt;

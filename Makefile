@@ -9,7 +9,7 @@ lint:
 	cargo clippy
 
 cargoclean:
-	cargo sweep -t 15
+	cargo sweep -t 7
 
 spinup-rabbit:
 	docker run -d --hostname rabbitmq.service.dev -p 5672:5672 -p 15672:15672 rabbitmq:3-management

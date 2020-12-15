@@ -1,9 +1,8 @@
 //! Defines the Orchestrator role, which manages work for all devices on the platform
 use super::{ExecutionFaliure, Executor, GenericNode, SetupFaliure, Task};
-use crate::db::{Database, ManagedDatabase};
 use crate::file_utils::{append_to_file, clear_tmp, copy_dir_contents_to_static};
 use crate::git_utils::clone_remote_branch;
-use crate::gql_model::{ApplicationStatus, Node, Service, ServiceStatus};
+use crate::gql_model::{ApplicationStatus, Deployment, Node, Service, ServiceStatus};
 use crate::gql_schema::{Mutation, Query};
 use crate::network::wait_for_good_healthcheck;
 use crate::rabbit::{
@@ -18,7 +17,12 @@ use futures::future;
 use log::{info, warn};
 use std::fs;
 use std::process::Command;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard};
+
+pub mod db;
+pub mod github_api;
+
+use db::{Database, ManagedDatabase};
 
 /// Only one device on the network has the Orchestrator role at a single time
 /// Handles coordination of all other nodes
@@ -70,8 +74,7 @@ async fn fetch_ui(o: &OrchestrationExecutor) {
         return;
     }
 
-    let git_data =
-        crate::github_api::get_tail_commits_for_repo_branches("ethanshry", "kraken-ui").await;
+    let git_data = github_api::get_tail_commits_for_repo_branches("ethanshry", "kraken-ui").await;
 
     let mut sha = String::from("");
 
@@ -185,10 +188,10 @@ pub async fn deploy_rabbit_instance(
 /// Ensures the deployment has the potential for success
 /// This includes ensuring the url is valid and the shipwreck.toml exists in the repo
 pub async fn validate_deployment(git_url: &str) -> Result<String, ()> {
-    match crate::github_api::parse_git_url(git_url) {
+    match github_api::parse_git_url(git_url) {
         None => Err(()),
         Some(url_data) => {
-            match crate::github_api::check_for_file_in_repo(
+            match github_api::check_for_file_in_repo(
                 &url_data.user,
                 &url_data.repo,
                 "shipwreck.toml",
@@ -196,7 +199,7 @@ pub async fn validate_deployment(git_url: &str) -> Result<String, ()> {
             .await
             {
                 Some(_) => {
-                    let commits = crate::github_api::get_tail_commits_for_repo_branches(
+                    let commits = github_api::get_tail_commits_for_repo_branches(
                         &url_data.user,
                         &url_data.repo,
                     )
@@ -435,6 +438,7 @@ impl Executor for OrchestrationExecutor {
                 match deployment.status.0 {
                     ApplicationStatus::DeploymentRequested => {
                         // Look for free nodes to distribute tasks to
+                        // TODO find some better way than this to handle DB dropping linter BS
                         {
                             let arc = self.db_ref.clone();
                             deployment.update_status(ApplicationStatus::ValidatingDeploymentData);
@@ -452,16 +456,13 @@ impl Executor for OrchestrationExecutor {
                                 }
                             }
                             Ok(commit) => {
-                                let nodes;
-                                {
-                                    let arc = self.db_ref.clone();
-                                    let mut db = arc.lock().unwrap();
-                                    deployment
-                                        .update_status(ApplicationStatus::DelegatingDeployment);
-                                    deployment.commit = commit;
+                                deployment.update_status(ApplicationStatus::DelegatingDeployment);
+                                deployment.commit = commit;
+                                do_db_task(self, |db| {
                                     db.update_deployment(&deployment.id, &deployment);
-                                    nodes = db.get_nodes();
-                                }
+                                });
+                                let nodes =
+                                    do_db_task(self, |db| -> Option<Vec<Node>> { db.get_nodes() });
                                 info!("{:?}", nodes);
                                 match nodes {
                                     None => {
@@ -470,12 +471,9 @@ impl Executor for OrchestrationExecutor {
                                             &deployment.id
                                         );
                                         deployment.update_status(ApplicationStatus::Errored);
-                                        {
-                                            let arc = self.db_ref.clone();
-                                            let mut db = arc.lock().unwrap();
-
+                                        do_db_task(self, |db| {
                                             db.update_deployment(&deployment.id, &deployment);
-                                        }
+                                        });
                                     }
                                     Some(nodes) => {
                                         let mut curr_node = &nodes[0];
@@ -490,12 +488,9 @@ impl Executor for OrchestrationExecutor {
 
                                         deployment.node = curr_node.id.clone();
                                         deployment.update_status(ApplicationStatus::Errored);
-                                        {
-                                            let arc = self.db_ref.clone();
-                                            let mut db = arc.lock().unwrap();
-
+                                        do_db_task(self, |db| {
                                             db.update_deployment(&deployment.id, &deployment);
-                                        }
+                                        });
                                         // Send work to curr_node
                                         let msg = WorkRequestMessage::new(
                                             WorkRequestType::RequestDeployment,
@@ -507,20 +502,21 @@ impl Executor for OrchestrationExecutor {
                                             node.broker.as_ref().unwrap().get_channel().await;
                                         msg.send(&publisher, &curr_node.id).await;
 
-                                        {
-                                            let arc = self.db_ref.clone();
-                                            let mut db = arc.lock().unwrap();
-
-                                            db.add_deployment_to_node(&curr_node.id, deployment.id)
-                                                .unwrap();
-                                        } // Deployment has been scheduled
+                                        do_db_task(self, |db| {
+                                            db.add_deployment_to_node(
+                                                &curr_node.id,
+                                                deployment.id.clone(),
+                                            )
+                                            .unwrap();
+                                        });
+                                        // Deployment has been scheduled
                                     }
                                 }
                             }
                         }
                     }
                     ApplicationStatus::UpdateRequested => {
-                        let commit = crate::github_api::get_tail_commit_for_branch_from_url(
+                        let commit = github_api::get_tail_commit_for_branch_from_url(
                             "main",
                             &deployment.src_url,
                         )
@@ -534,14 +530,11 @@ impl Executor for OrchestrationExecutor {
                                         "Update on remote for deployment {} detected, redeploying",
                                         &deployment.id
                                     );
-                                    {
-                                        let arc = self.db_ref.clone();
-                                        let mut db = arc.lock().unwrap();
-                                        deployment.update_status(
-                                            ApplicationStatus::DelegatingDestruction,
-                                        );
+                                    deployment
+                                        .update_status(ApplicationStatus::DelegatingDestruction);
+                                    do_db_task(self, |db| {
                                         db.update_deployment(&deployment.id, &deployment);
-                                    }
+                                    });
                                     let msg = WorkRequestMessage::new(
                                         WorkRequestType::CancelDeployment,
                                         Some(&deployment.id),
@@ -560,22 +553,20 @@ impl Executor for OrchestrationExecutor {
                                     msg.send(&publisher, &deployment.node).await;
                                 } else {
                                     info!("Update requested for up-to-date deployment");
-                                    let arc = self.db_ref.clone();
-                                    let mut db = arc.lock().unwrap();
                                     deployment.update_status(ApplicationStatus::Running);
-                                    db.update_deployment(&deployment.id, &deployment);
+                                    do_db_task(self, |db| {
+                                        db.update_deployment(&deployment.id, &deployment);
+                                    });
                                 }
                             }
                         }
                     }
                     ApplicationStatus::DestructionRequested => {
-                        {
-                            let arc = self.db_ref.clone();
-                            let mut db = arc.lock().unwrap();
-                            deployment.update_status(ApplicationStatus::DelegatingDestruction);
+                        deployment.update_status(ApplicationStatus::DelegatingDestruction);
+                        do_db_task(self, |db| {
                             db.update_deployment(&deployment.id, &deployment);
                             db.remove_deployment_from_nodes(&deployment.id);
-                        }
+                        });
                         let msg = WorkRequestMessage::new(
                             WorkRequestType::CancelDeployment,
                             Some(&deployment.id),
@@ -591,4 +582,38 @@ impl Executor for OrchestrationExecutor {
         }
         Ok(())
     }
+}
+
+/// Provides a closure direct access to the database through the Arc<Mutex>>
+///
+/// # Arguments
+///
+/// * `executor` - The OrchestrationExecutor that owns an Arc to the Database
+/// * `handle` - A closure which accepts a T, and returns a U
+/// where `T` is a mutable reference to the database, and `U` is the return type of the closure
+/// # Examples
+///
+/// Example with no return type
+/// ```
+/// let orchestrator = platform_executor::orchestration_executor::OrchestrationExecutor::new();
+/// do_db_task(&mut orchestrator, |db| {
+///     let nodes = db.get_nodes();
+///     assert_eq!(nodes, None);
+/// });
+/// ```
+/// Example with return type
+/// ```
+/// let orchestrator = platform_executor::orchestration_executor::OrchestrationExecutor::new();
+/// let nodes = do_db_task(&mut orchestrator, |db| -> Option<Vec<Nodes>> {
+///     db.get_nodes()
+/// });
+/// assert_eq!(nodes, None);
+/// ```
+fn do_db_task<T, U>(executor: &mut OrchestrationExecutor, handle: T) -> U
+where
+    T: Fn(&mut MutexGuard<'_, Database>) -> U,
+{
+    let arc = executor.db_ref.clone();
+    let mut db = arc.lock().unwrap();
+    handle(&mut db)
 }
