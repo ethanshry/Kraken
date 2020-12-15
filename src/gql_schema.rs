@@ -1,8 +1,8 @@
 //! Defines GQL Query/Mutation types and specific resolver functions
-use crate::db::{Database, ManagedDatabase};
 use crate::gql_model::{
     ApplicationStatus, Deployment, Node, Orchestrator, Platform, Service, TemporalApplicationStatus,
 };
+use crate::platform_executor::orchestration_executor::db::{Database, ManagedDatabase};
 use juniper::{FieldError, FieldResult};
 use std::time::{Duration, UNIX_EPOCH};
 use uuid::Uuid;
@@ -44,8 +44,8 @@ impl Node {
         self.current_ram_percent()
     }
 
-    fn application_instances(&self) -> Vec<String> {
-        self.application_instances.clone()
+    fn deployments(&self) -> Vec<String> {
+        self.deployments.clone()
     }
 
     // TODO figure out what is going on with this

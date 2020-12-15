@@ -35,19 +35,6 @@ impl Database {
         let deployments = HashMap::new();
         let nodes = HashMap::new();
 
-        /*
-        let test_services = vec![
-            Service::new("RabbitMQ", "0.0.1", ServiceStatus::OK),
-            Service::new("Python", "3.6.2", ServiceStatus::ERRORED),
-        ];
-        */
-
-        //deployments.insert("test".to_owned(), test_services);
-
-        //let test_node = Node::new("test", "EthanShryDesktop", 0, 0, 0, 0.0);
-
-        //nodes.insert("test".to_owned(), test_node);
-
         let orchestrator = Orchestrator::new(OrchestratorInterface::new(
             None,
             None,
@@ -149,30 +136,71 @@ impl Database {
         }
     }
 
-    pub fn add_application_instance_to_node(
+    pub fn add_deployment_to_node(
         &mut self,
         node_id: &str,
         deployment_id: String,
     ) -> Result<(), ()> {
         if let Some(n) = self.nodes.get(node_id) {
             let mut node = n.clone();
-            node.application_instances.push(deployment_id);
+            node.deployments.push(deployment_id);
             self.nodes.insert(node.id.clone(), node.to_owned());
             return Ok(());
         }
         Err(())
     }
 
-    pub fn remove_application_instance_from_nodes(&mut self, deployment_id: &str) {
+    pub fn remove_deployment_from_nodes(&mut self, deployment_id: &str) {
         if let Some(nodes) = self.get_nodes() {
             let key = String::from(deployment_id);
             for node in nodes {
-                if node.application_instances.contains(&key) {
+                if node.deployments.contains(&key) {
                     let mut node = node.clone();
-                    node.application_instances.retain(|id| id != deployment_id);
+                    node.deployments.retain(|id| id != deployment_id);
                     self.nodes.insert(node.id.clone(), node.to_owned());
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+
+    use super::*;
+
+    #[test]
+    fn db_handles_nodes() {
+        let mut db = Database::new();
+
+        let node = Node::new("abcd", "temp", 1, 1, 1, 0.5);
+
+        db.insert_node(&node);
+
+        assert_eq!(db.nodes.iter().count(), 1);
+
+        assert_eq!(db.get_node("1234"), None);
+        assert_eq!(db.get_node("abcd"), Some(node));
+    }
+
+    #[test]
+    fn db_handles_deployments() {
+        let mut db = Database::new();
+
+        let deployment = Deployment::new(
+            "1234",
+            "http://url.com",
+            "1.0.0",
+            "abcd1234",
+            ApplicationStatus::Running,
+            "localhost:8000/log/1234",
+            "localhost:9000",
+            "abcd",
+        );
+
+        db.insert_deployment(&deployment);
+
+        assert_eq!(db.get_deployment("abcd"), None);
+        assert_eq!(db.get_deployment("1234"), Some(deployment));
     }
 }

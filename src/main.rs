@@ -4,18 +4,21 @@
 
 #![feature(proc_macro_hygiene, decl_macro, async_closure)]
 #![allow(dead_code)]
-#![warn(missing_docs, rust_2018_idioms)]
+#![warn(
+    missing_docs,
+    rust_2018_idioms,
+    missing_debug_implementations,
+    unused_extern_crates
+)]
 
 #[macro_use]
 extern crate juniper;
 
 mod api_routes;
-mod db;
 mod deployment;
 mod docker;
 mod file_utils;
 mod git_utils;
-mod github_api;
 mod gql_model;
 mod gql_schema;
 mod network;
@@ -25,7 +28,7 @@ mod testing;
 mod utils;
 
 use log::{error, info, warn};
-use platform_executor::{ExecuteFaliure, GenericNode, NodeMode};
+use platform_executor::{ExecutionFaliure, Executor, GenericNode, NodeMode};
 
 #[tokio::main]
 async fn main() -> Result<(), ()> {
@@ -64,18 +67,16 @@ async fn main() -> Result<(), ()> {
     let mut node = GenericNode::new(&system_uuid, &rabbit_addr);
     info!("node {} established", system_uuid);
 
-    let mut worker = platform_executor::worker::Worker::new();
+    let mut worker = platform_executor::worker_executor::WorkerExecutor::new();
 
-    let mut orchestrator = platform_executor::orchestrator::Orchestrator::new();
+    let mut orchestrator = platform_executor::orchestration_executor::OrchestrationExecutor::new();
 
     if node_mode == NodeMode::ORCHESTRATOR {
-        match platform_executor::orchestrator::setup(&mut node, &mut orchestrator).await {
+        match orchestrator.setup(&mut node).await {
             Ok(_) => {
                 // Now that we have a platform, re-establish the worker
-                worker = platform_executor::worker::Worker::new();
-                platform_executor::worker::setup(&mut node, &mut worker)
-                    .await
-                    .unwrap();
+                worker = platform_executor::worker_executor::WorkerExecutor::new();
+                worker.setup(&mut node).await.unwrap();
             }
             Err(e) => {
                 error!("{:?}", e);
@@ -85,9 +86,7 @@ async fn main() -> Result<(), ()> {
             }
         }
     } else {
-        platform_executor::worker::setup(&mut node, &mut worker)
-            .await
-            .unwrap();
+        worker.setup(&mut node).await.unwrap();
     }
 
     // TODO remove for final
@@ -96,35 +95,40 @@ async fn main() -> Result<(), ()> {
     loop {
         match node_mode {
             NodeMode::ORCHESTRATOR => {
-                match platform_executor::orchestrator::execute(&node, &orchestrator).await {
+                match orchestrator.execute(&mut node).await {
                     Ok(_) => {}
                     Err(faliure) => match faliure {
-                        ExecuteFaliure::SigKill => {
+                        ExecutionFaliure::SigKill => {
                             panic!("Orchestrator indicated a critical execution faliure")
+                        }
+                        ExecutionFaliure::BadConsumer => {
+                            panic!("Worker could not connect to rabbit")
                         }
                     },
                 };
                 // An Orchestrator IS a worker, so do worker tasks too
                 // This may cause problems later due to sharing of Node information? Not sure
-                match platform_executor::worker::execute(&mut node, &mut worker).await {
+                match worker.execute(&mut node).await {
                     Ok(_) => {}
                     Err(faliure) => match faliure {
-                        ExecuteFaliure::SigKill => {
+                        ExecutionFaliure::SigKill => {
                             panic!("Worker indicated a critical execution faliure")
+                        }
+                        ExecutionFaliure::BadConsumer => {
+                            panic!("Worker could not connect to rabbit")
                         }
                     },
                 };
             }
-            NodeMode::WORKER => {
-                match platform_executor::worker::execute(&mut node, &mut worker).await {
-                    Ok(_) => {}
-                    Err(faliure) => match faliure {
-                        ExecuteFaliure::SigKill => {
-                            panic!("Worker indicated a critical execution faliure")
-                        }
-                    },
-                }
-            }
+            NodeMode::WORKER => match worker.execute(&mut node).await {
+                Ok(_) => {}
+                Err(faliure) => match faliure {
+                    ExecutionFaliure::SigKill => {
+                        panic!("Worker indicated a critical execution faliure")
+                    }
+                    ExecutionFaliure::BadConsumer => panic!("Worker could not connect to rabbit"),
+                },
+            },
         }
         std::thread::sleep(std::time::Duration::from_millis(500));
     }

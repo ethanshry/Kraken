@@ -5,6 +5,7 @@ use crate::rabbit::RabbitMessage;
 use std::iter::FromIterator;
 use std::str::FromStr;
 
+#[derive(PartialEq, Debug)]
 pub struct DeploymentMessage {
     pub system_identifier: String,
     pub deployment_id: String,
@@ -55,4 +56,15 @@ impl RabbitMessage<DeploymentMessage> for DeploymentMessage {
 
         (res[0].clone(), msg)
     }
+}
+
+#[test]
+fn deploymentmessage_is_invertible() {
+    let mut left = DeploymentMessage::new("sysid", "deployid");
+    left.update_message(ApplicationStatus::Running, "deployment is running");
+    let data = left.build_message();
+
+    let (id, right) = DeploymentMessage::deconstruct_message(&data);
+    assert_eq!(id, "sysid");
+    assert_eq!(left, right);
 }

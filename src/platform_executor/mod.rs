@@ -1,6 +1,6 @@
 //! The core logic for different NodeModes
-pub mod orchestrator;
-pub mod worker;
+pub mod orchestration_executor;
+pub mod worker_executor;
 
 use crate::rabbit::RabbitBroker;
 use async_trait::async_trait;
@@ -25,8 +25,9 @@ pub enum SetupFaliure {
 }
 
 // Defines reasons for faliure of the execute task
-pub enum ExecuteFaliure {
-    SigKill, // Task should be killed after this execution
+pub enum ExecutionFaliure {
+    SigKill,     // Task should be killed after this execution
+    BadConsumer, // Error in accessing consumer or parsing message
 }
 
 // Labeled handle to a tokio thread
@@ -70,8 +71,8 @@ pub struct GenericNode {
     pub queue_consumers: Vec<Task>,
     pub worker_tasks: Vec<Task>,
     pub broker: Option<RabbitBroker>,
-    pub system_id: String,   // TODO common
-    pub rabbit_addr: String, // TODO common
+    pub system_id: String,
+    pub rabbit_addr: String,
     pub deployments: std::collections::LinkedList<DeploymentInfo>,
 }
 
@@ -89,20 +90,20 @@ impl GenericNode {
     }
 }
 
-/// Connects to the local RabbitMQ service
-/// TODO make this more complex (i.e. exponential backoff or smtn)
-pub async fn connect_to_rabbit_instance(addr: &str) -> Result<RabbitBroker, String> {
-    match RabbitBroker::new(addr).await {
-        Some(b) => Ok(b),
-        None => Err(String::from("Failed to connect to broker")),
-    }
-}
-
-// Defines the interface all nodes must satisfy
+/// Defines the interface to be used by all executors on a device
+/// The executor will have setup called once, to instantiate the executor, and then will have execute called repeatedly so long as the executor is alive.
 #[async_trait]
-trait ExecutionNode {
+pub trait Executor {
     /// Is called once to set up this node
-    async fn setup(&self) -> Result<(), SetupFaliure>;
+    async fn setup(&mut self, node: &mut GenericNode) -> Result<(), SetupFaliure>;
     /// Is called repeatedly after setup has terminated
-    async fn execute(&self) -> Result<(), ExecuteFaliure>;
+    async fn execute(&mut self, node: &mut GenericNode) -> Result<(), ExecutionFaliure>;
+    /// Connects to the local RabbitMQ service
+    /// TODO make this more complex (i.e. exponential backoff or smtn)
+    async fn connect_to_rabbit_instance(addr: &str) -> Result<RabbitBroker, String> {
+        match RabbitBroker::new(addr).await {
+            Some(b) => Ok(b),
+            None => Err(String::from("Failed to connect to broker")),
+        }
+    }
 }

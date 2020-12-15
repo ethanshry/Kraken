@@ -1,8 +1,8 @@
 //! Module containing definitions of rocket routes
 
 use crate::{
-    db::ManagedDatabase,
     gql_schema::{Mutation, Query},
+    platform_executor::orchestration_executor::db::ManagedDatabase,
 }; // Include module from the crate
 
 use juniper::RootNode;

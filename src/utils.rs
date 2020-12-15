@@ -1,10 +1,13 @@
-//! Misc utility functions
+//! Misc utility functions and consts for the platform
 
-use crate::db::Database;
 use crate::gql_model::{ApplicationStatus, Orchestrator, OrchestratorInterface, Platform};
+use crate::platform_executor::orchestration_executor::db::Database;
 use std::fs;
 use std::io::Write;
 use uuid::Uuid;
+
+pub const ROCKET_PORT_NO: u16 = 8000;
+pub const UI_GIT_ADDR: &str = "https://github.com/ethanshry/Kraken-UI.git";
 
 /// Pulls the systemId from the id.txt file, if one exists
 pub fn get_system_id() -> String {
@@ -31,7 +34,7 @@ pub fn load_or_create_platform(db: &mut Database) -> Platform {
         Err(_) => Platform::new(
             &vec![],
             &Orchestrator::new(OrchestratorInterface::new(
-                Some(String::from("https://github.com/ethanshry/Kraken-UI.git")),
+                Some(String::from(UI_GIT_ADDR)),
                 None,
                 ApplicationStatus::Errored,
             )),
