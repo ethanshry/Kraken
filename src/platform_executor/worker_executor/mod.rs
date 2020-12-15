@@ -1,7 +1,7 @@
 //! Defines the Worker role, which handles core fucntionality of all devices on the platform
 use super::{DeploymentInfo, ExecutionFaliure, Executor, GenericNode, SetupFaliure, Task};
 use crate::docker::DockerBroker;
-use crate::file_utils::{clear_tmp, copy_dockerfile_to_dir};
+use crate::file_utils::{clear_tmp, copy_dockerfile_to_dir, get_all_files_in_folder};
 use crate::git_utils::clone_remote_branch;
 use crate::gql_model::ApplicationStatus;
 use crate::rabbit::sysinfo_message::SysinfoMessage;
@@ -256,8 +256,9 @@ pub async fn handle_deployment(
     // Create deployment info before first docker command, so build logs will be preserved
 
     let dockerfile_name = match &deployment_config.config.lang[..] {
-        "python3" => "python36.dockerfile",
-        "node" => "node.dockerfile",
+        "python3" => Some("python36.dockerfile"),
+        "node" => Some("node.dockerfile"),
+        "custom" => None,
         _ => {
             msg.update_message(
                 ApplicationStatus::Errored,
@@ -268,7 +269,23 @@ pub async fn handle_deployment(
         }
     };
 
-    copy_dockerfile_to_dir(dockerfile_name, tmp_dir_path);
+    match dockerfile_name {
+        Some(file) => {
+            copy_dockerfile_to_dir(file, tmp_dir_path);
+        }
+        None => {
+            // We are using a custom dockerfile, make sure it exists
+            let files = get_all_files_in_folder(tmp_dir_path).unwrap();
+            if !files.contains(&format!("{}/Dockerfile", tmp_dir_path)) {
+                msg.update_message(
+                    ApplicationStatus::Errored,
+                    &"The Deployment is configured to use a custom Dockerfile, and one could not be found in the repository root.",
+                );
+                msg.send(&publisher, QueueLabel::Deployment.as_str()).await;
+                return Err(deployment_info);
+            }
+        }
+    }
 
     info!("module path is {}", module_path!());
 
