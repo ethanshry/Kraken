@@ -37,6 +37,7 @@ impl Service {
 pub struct Node {
     pub id: String,
     pub model: String,
+    pub addr: String,
     uptime: u64,
     ram_free: u64,
     ram_used: u64,
@@ -50,6 +51,7 @@ impl Clone for Node {
         let mut node = Node {
             id: self.id.to_owned(),
             model: self.model.to_owned(),
+            addr: self.addr.clone(),
             ram_free: self.ram_free,
             ram_used: self.ram_used,
             load_avg_5: self.load_avg_5,
@@ -74,18 +76,16 @@ impl Node {
     pub fn new(
         id: &str,
         model: &str,
-        uptime: u64,
-        ram_free: u64,
-        ram_used: u64,
-        load_avg_5: f32,
+        addr: &str
     ) -> Node {
         Node {
             id: id.to_owned(),
             model: model.to_owned(),
-            uptime,
-            ram_free,
-            ram_used,
-            load_avg_5,
+            addr: addr.to_owned(),
+            uptime: 0
+            ram_free: 0
+            ram_used:0
+            load_avg_5:0
             deployments: vec![],
             services: vec![],
         }
@@ -127,6 +127,7 @@ impl Node {
     pub fn from_incomplete(
         id: &str,
         model: Option<&str>,
+        addr: &str,
         ram_free: Option<u64>,
         ram_used: Option<u64>,
         uptime: Option<u64>,
@@ -136,29 +137,27 @@ impl Node {
     ) -> Node {
         // TODO find a cleaner way to do this
         // Would like to model.unwrap_or("placeholder") or similiar
-        Node::new(
+        let mut n = Node::new(
             id,
+            addr,
             match model {
                 Some(m) => m,
                 None => "placeholder_model",
-            },
-            match uptime {
-                Some(r) => r,
-                None => 0,
-            },
-            match ram_free {
-                Some(r) => r,
-                None => 0,
-            },
-            match ram_used {
-                Some(r) => r,
-                None => 0,
-            },
-            match load_avg_5 {
-                Some(r) => r,
-                None => 0.0,
-            },
-        )
+            }
+        );
+        if let Some(u) = uptime {
+            n.uptime = u;
+        }
+        if let Some(r) = ram_free {
+            n.ram_free = r;
+        }
+        if let Some(r) = ram_used {
+            n.ram_used = r;
+        }
+        if let Some(l) = load_avg_5 {
+            n.load_avg_5 = l;
+        }
+        n
     }
 
     pub fn add_service(&mut self, service: Service) {
