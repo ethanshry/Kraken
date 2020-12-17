@@ -84,7 +84,7 @@ pub async fn scan_network_for_machines(port: u16) -> Vec<String> {
                 .map(|addr| async move {
                     match reqwest::Client::new()
                         .get(&format!("http://{}:{}/ping", addr, port))
-                        .timeout(std::time::Duration::from_millis(1000))
+                        .timeout(std::time::Duration::from_millis(2000))
                         .send()
                         .await
                         .is_ok()
