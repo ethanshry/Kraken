@@ -209,7 +209,7 @@ impl DockerBroker {
                 let mut log: Vec<String> = vec![];
                 info!("Tar for {} completed succesfully", source_path);
                 log.push(format!(
-                    "[KRAKEN][INFO]Tar for {} completed succesfully",
+                    "[KRAKEN][INFO]Tar for {} completed succesfully\n",
                     source_path
                 ));
                 let build_result: Result<(), String> = async {
@@ -222,7 +222,7 @@ impl DockerBroker {
 
                     info!("Building docker image [{}]", &container_guid);
                     log.push(format!(
-                        "[KRAKEN][INFO]Building docker image [{}]",
+                        "[KRAKEN][INFO]Building docker image [{}]\n",
                         &container_guid
                     ));
                     let mut build_results = self.conn.build_image(

@@ -329,7 +329,6 @@ impl Executor for OrchestrationExecutor {
             let handler = move |data: Vec<u8>| {
                 let (node, message) = SysinfoMessage::deconstruct_message(&data);
                 let mut db = arc.lock().unwrap();
-                info!("{:?}", message);
                 if let Some(n) = db.get_node(&node) {
                     let mut new_node = n;
                     new_node.set_id(&node);

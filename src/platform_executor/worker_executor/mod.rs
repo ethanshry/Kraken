@@ -183,7 +183,10 @@ impl WorkerExecutor {
 
             tokio::spawn(async move {
                 let lan_addr = crate::network::get_lan_addr();
-                let mut msg = SysinfoMessage::new(&system_uuid, &lan_addr.unwrap_or_else(|| String::from("127.0.0.1")));
+                let mut msg = SysinfoMessage::new(
+                    &system_uuid,
+                    &lan_addr.unwrap_or_else(|| String::from("127.0.0.1")),
+                );
                 loop {
                     std::thread::sleep(std::time::Duration::new(5, 0));
                     let system = sysinfo::System::new_all();
@@ -217,6 +220,7 @@ pub async fn handle_deployment(
     msg.send(&publisher, QueueLabel::Deployment.as_str()).await;
 
     // TODO make function to execute a thing in a tmp dir which auto-cleans itself (#51)
+    std::fs::remove_dir_all(&format!("tmp/deployment/{}", id));
     let tmp_dir_path = &format!("tmp/deployment/{}", id);
 
     info!("Creating Container {}", &container_guid);

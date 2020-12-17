@@ -56,7 +56,7 @@ impl RabbitMessage<SysinfoMessage> for SysinfoMessage {
 
         let mut msg = SysinfoMessage::new(res.get(0).unwrap(), res.get(1).unwrap());
 
-        if res.len() == 5 {
+        if res.len() == 6 {
             msg.update_message(
                 res.get(2)
                     .unwrap_or(&String::from("0"))
