@@ -4,7 +4,7 @@ use crate::file_utils::{append_to_file, clear_tmp, copy_dir_contents_to_static};
 use crate::git_utils::clone_remote_branch;
 use crate::gql_model::{ApplicationStatus, Deployment, Node, Service, ServiceStatus};
 use crate::gql_schema::{Mutation, Query};
-use crate::network::{wait_for_good_healthcheck, get_lan_addr};
+use crate::network::{get_lan_addr, wait_for_good_healthcheck};
 use crate::rabbit::{
     deployment_message::DeploymentMessage,
     log_message::LogMessage,
@@ -86,7 +86,7 @@ async fn fetch_ui(o: &OrchestrationExecutor) {
         Some(data) => {
             let mut flag = true;
             for branch in data {
-                if branch.name == "build" {
+                if branch.name == crate::utils::UI_BRANCH_NAME {
                     let arc = o.db_ref.clone();
                     let db = arc.lock().unwrap();
                     let active_branch = db.get_orchestrator().ui.cloned_commit;
@@ -120,9 +120,13 @@ async fn fetch_ui(o: &OrchestrationExecutor) {
 
     if should_update_ui {
         info!("Cloning updated UI...");
-        clone_remote_branch(crate::utils::UI_GIT_ADDR, "build", "tmp/site")
-            .wait()
-            .unwrap();
+        clone_remote_branch(
+            crate::utils::UI_GIT_ADDR,
+            crate::utils::UI_BRANCH_NAME,
+            "tmp/site",
+        )
+        .wait()
+        .unwrap();
 
         // Build the site
         info!("Compiling Kraken-UI");

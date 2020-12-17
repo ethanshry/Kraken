@@ -30,7 +30,6 @@ pub fn get_lan_addr() -> Option<String> {
                     // we are not looking at localhost, so use it
                     addr = Some(a.ip().to_string());
                     break 'ifaces;
-
                 }
             }
         }
@@ -85,7 +84,7 @@ pub async fn scan_network_for_machines(port: u16) -> Vec<String> {
                 .map(|addr| async move {
                     match reqwest::Client::new()
                         .get(&format!("http://{}:{}/ping", addr, port))
-                        .timeout(std::time::Duration::from_millis(500))
+                        .timeout(std::time::Duration::from_millis(1000))
                         .send()
                         .await
                         .is_ok()
