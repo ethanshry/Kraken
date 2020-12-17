@@ -73,18 +73,14 @@ impl Clone for Node {
 // non-gql impl block for Node
 // TODO rename so this makes more sense (is really node-info or something)
 impl Node {
-    pub fn new(
-        id: &str,
-        model: &str,
-        addr: &str
-    ) -> Node {
+    pub fn new(id: &str, model: &str, addr: &str) -> Node {
         Node {
             id: id.to_owned(),
             model: model.to_owned(),
             addr: addr.to_owned(),
             uptime: 0,
             ram_free: 0,
-            ram_used:0,
+            ram_used: 0,
             load_avg_5: 0.0,
             deployments: vec![],
             services: vec![],
@@ -139,11 +135,11 @@ impl Node {
         // Would like to model.unwrap_or("placeholder") or similiar
         let mut n = Node::new(
             id,
-            addr,
             match model {
                 Some(m) => m,
                 None => "placeholder_model",
-            }
+            },
+            addr,
         );
         if let Some(u) = uptime {
             n.uptime = u;

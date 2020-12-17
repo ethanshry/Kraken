@@ -37,7 +37,12 @@ impl RabbitMessage<SysinfoMessage> for SysinfoMessage {
     fn build_message(&self) -> Vec<u8> {
         format!(
             "{}|{}|{}|{}|{}|{}",
-            self.system_identifier, self.lan_addr, self.ram_free, self.ram_used, self.uptime, self.load_avg_5
+            self.system_identifier,
+            self.lan_addr,
+            self.ram_free,
+            self.ram_used,
+            self.uptime,
+            self.load_avg_5
         )
         .as_bytes()
         .to_vec()
@@ -53,10 +58,6 @@ impl RabbitMessage<SysinfoMessage> for SysinfoMessage {
 
         if res.len() == 5 {
             msg.update_message(
-                res.get(1)
-                    .unwrap_or(&String::from("0"))
-                    .parse::<u64>()
-                    .unwrap_or(0),
                 res.get(2)
                     .unwrap_or(&String::from("0"))
                     .parse::<u64>()
@@ -66,6 +67,10 @@ impl RabbitMessage<SysinfoMessage> for SysinfoMessage {
                     .parse::<u64>()
                     .unwrap_or(0),
                 res.get(4)
+                    .unwrap_or(&String::from("0"))
+                    .parse::<u64>()
+                    .unwrap_or(0),
+                res.get(5)
                     .unwrap_or(&String::from("0"))
                     .parse::<f32>()
                     .unwrap_or(0.0),
