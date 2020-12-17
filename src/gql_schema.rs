@@ -23,6 +23,10 @@ impl Node {
         self.model.as_str()
     }
 
+    fn addr(&self) -> &str {
+        self.addr.as_str()
+    }
+
     pub fn uptime(&self) -> i32 {
         self.uptime() as i32
     }

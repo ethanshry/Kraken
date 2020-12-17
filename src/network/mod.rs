@@ -13,6 +13,31 @@ use pnet::{datalink, ipnetwork::IpNetwork};
 const MIN_SUBNET_ADDR: u8 = 0;
 const MAX_SUBNET_ADDR: u8 = 255;
 
+/// Gets the IPv4 LAN address for your device
+/// Will not return localhost
+/// # Examples
+///
+/// ```
+/// let addr = get_lan_addr();
+/// assert_ne!(Some("127.0.0.1", addr))
+/// ```
+pub fn get_lan_addr() -> Option<String> {
+    let mut addr: Option<String> = None;
+    'ifaces: for iface in datalink::interfaces() {
+        for ip in iface.ips {
+            if let IpNetwork::V4(a) = ip {
+                if a.ip().to_string() != "127.0.0.1" {
+                    // we are not looking at localhost, so use it
+                    addr = Some(a.ip().to_string());
+                    break 'ifaces;
+
+                }
+            }
+        }
+    }
+    return addr;
+}
+
 /// Searches the local network for machines on the specified port
 /// Returns a Vec of addresses which have the specified port open
 /// # Arguments

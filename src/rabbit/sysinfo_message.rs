@@ -6,6 +6,7 @@ use std::iter::FromIterator;
 #[derive(PartialEq, Debug)]
 pub struct SysinfoMessage {
     pub system_identifier: String,
+    pub lan_addr: String,
     pub ram_free: u64,
     pub ram_used: u64,
     pub uptime: u64,
@@ -13,9 +14,10 @@ pub struct SysinfoMessage {
 }
 
 impl SysinfoMessage {
-    pub fn new(system_identifier: &str) -> SysinfoMessage {
+    pub fn new(system_identifier: &str, lan_addr: &str) -> SysinfoMessage {
         SysinfoMessage {
             system_identifier: system_identifier.to_owned(),
+            lan_addr: lan_addr.to_owned(),
             ram_free: 0,
             ram_used: 0,
             uptime: 0,
@@ -34,8 +36,8 @@ impl SysinfoMessage {
 impl RabbitMessage<SysinfoMessage> for SysinfoMessage {
     fn build_message(&self) -> Vec<u8> {
         format!(
-            "{}|{}|{}|{}|{}",
-            self.system_identifier, self.ram_free, self.ram_used, self.uptime, self.load_avg_5
+            "{}|{}|{}|{}|{}|{}",
+            self.system_identifier, self.lan_addr, self.ram_free, self.ram_used, self.uptime, self.load_avg_5
         )
         .as_bytes()
         .to_vec()
@@ -47,7 +49,7 @@ impl RabbitMessage<SysinfoMessage> for SysinfoMessage {
                 .map(|s| s.to_string()),
         );
 
-        let mut msg = SysinfoMessage::new(res.get(0).unwrap());
+        let mut msg = SysinfoMessage::new(res.get(0).unwrap(), res.get(1).unwrap());
 
         if res.len() == 5 {
             msg.update_message(
@@ -76,7 +78,7 @@ impl RabbitMessage<SysinfoMessage> for SysinfoMessage {
 
 #[test]
 fn sysinfomessage_is_invertible() {
-    let mut left = SysinfoMessage::new("id");
+    let mut left = SysinfoMessage::new("id", "127.0.0.1");
     left.update_message(15, 15, 15, 1.5);
     let data = left.build_message();
 

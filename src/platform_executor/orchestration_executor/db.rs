@@ -173,7 +173,7 @@ mod test {
     fn db_handles_nodes() {
         let mut db = Database::new();
 
-        let node = Node::new("abcd", "temp", 1, 1, 1, 0.5);
+        let node = Node::new("abcd", "temp", "192.168.0.55");
 
         db.insert_node(&node);
 

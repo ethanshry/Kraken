@@ -182,7 +182,8 @@ impl WorkerExecutor {
             let publisher = broker.get_channel().await;
 
             tokio::spawn(async move {
-                let mut msg = SysinfoMessage::new(&system_uuid);
+                let lan_addr = crate::network::get_lan_addr();
+                let mut msg = SysinfoMessage::new(&system_uuid, &lan_addr.unwrap_or_else(|| String::from("127.0.0.1")));
                 loop {
                     std::thread::sleep(std::time::Duration::new(5, 0));
                     let system = sysinfo::System::new_all();

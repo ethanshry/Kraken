@@ -4,7 +4,7 @@ use crate::file_utils::{append_to_file, clear_tmp, copy_dir_contents_to_static};
 use crate::git_utils::clone_remote_branch;
 use crate::gql_model::{ApplicationStatus, Deployment, Node, Service, ServiceStatus};
 use crate::gql_schema::{Mutation, Query};
-use crate::network::wait_for_good_healthcheck;
+use crate::network::{wait_for_good_healthcheck, get_lan_addr};
 use crate::rabbit::{
     deployment_message::DeploymentMessage,
     log_message::LogMessage,
@@ -264,16 +264,14 @@ impl Executor for OrchestrationExecutor {
     async fn setup(&mut self, node: &mut GenericNode) -> Result<(), SetupFaliure> {
         // Put DB interaction in block scope
         // This prevents us from needing a `Send` `MutexGuard`
+        let lan_addr = get_lan_addr();
         {
             let arc = self.db_ref.clone();
             let mut db = arc.lock().unwrap();
             db.insert_node(&Node::new(
                 &node.system_id,
                 "Placeholder Model",
-                0,
-                0,
-                0,
-                0.0,
+                &lan_addr.unwrap_or_else(|| String::from("127.0.0.1")),
             ));
         }
         // clear all tmp files
@@ -341,6 +339,7 @@ impl Executor for OrchestrationExecutor {
                     let new_node = crate::gql_model::Node::from_incomplete(
                         &node,
                         None,
+                        &message.lan_addr,
                         Some(message.ram_free),
                         Some(message.ram_used),
                         Some(message.uptime),

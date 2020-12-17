@@ -82,10 +82,10 @@ impl Node {
             id: id.to_owned(),
             model: model.to_owned(),
             addr: addr.to_owned(),
-            uptime: 0
-            ram_free: 0
-            ram_used:0
-            load_avg_5:0
+            uptime: 0,
+            ram_free: 0,
+            ram_used:0,
+            load_avg_5: 0.0,
             deployments: vec![],
             services: vec![],
         }
