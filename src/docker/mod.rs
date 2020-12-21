@@ -28,12 +28,23 @@ pub mod docker_container;
 use docker_container::DockerContainer;
 
 /// The interface between Kraken and Docker
+/// The Docker Broker connects to the Docker Engine socket via the bollard crate
+/// Kraken can then use this connection to interface with the Docker engine.
 pub struct DockerBroker {
     /// Connection to the Rabbit Instance (Should be one per device)
     pub conn: bollard::Docker,
 }
 
 impl DockerBroker {
+    /// Attempts to connect to the Docker Engine, and if a connection can be established, returns a DockerBroker
+    /// # Examples
+    ///
+    /// ```
+    /// let docker = DockerBroker::new();
+    /// if let Some(d) = docker {
+    ///     println("Connected to docker!")
+    /// }
+    /// ```
     pub async fn new() -> Option<DockerBroker> {
         let conn = Docker::connect_with_unix_defaults();
         match conn {
@@ -58,9 +69,11 @@ impl DockerBroker {
     ///
     /// ```
     /// let docker = DockerBroker::new();
-    /// let ids = docker.get_image_ids();
-    /// for id in ids {
-    ///     println!("{:?}", id);
+    /// if let Some(d) = docker {
+    ///     let ids = d.get_image_ids();
+    ///     for id in ids {
+    ///         println!("{:?}", id);
+    ///     }
     /// }
     /// ```
     pub async fn get_image_ids(&self) -> Vec<String> {
@@ -82,6 +95,28 @@ impl DockerBroker {
         ids
     }
 
+    /// Fetches logs for a specific Docker image starting from the specified time
+    /// Returns a Vec<String> of log entries
+    ///
+    /// # Arguments
+    ///
+    /// * `container_id` - The id of the docker container to access
+    /// * `time` - The system time to start fetching logs from
+    /// # Examples
+    ///
+    /// ```
+    /// let docker = DockerBroker::new();
+    /// if let Some(d) = docker {
+    ///     let ids = d.get_image_ids();
+    ///     for id in ids {
+    ///         // to fetch logs starting from the current time (should be empty)
+    ///         let log = d.get_logs(id, SystemTime::now());
+    ///         for line in log {
+    ///             println!("{}", line);
+    ///         }
+    ///     }
+    /// }
+    /// ```
     pub async fn get_logs(&self, container_id: &str, time: SystemTime) -> Vec<String> {
         let options = Some(LogsOptions::<String> {
             stdout: true,

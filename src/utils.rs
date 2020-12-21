@@ -9,6 +9,7 @@ use uuid::Uuid;
 pub const ROCKET_PORT_NO: u16 = 8000;
 pub const UI_GIT_ADDR: &str = "https://github.com/ethanshry/Kraken-UI.git";
 pub const UI_BRANCH_NAME: &str = "0.1.1-B";
+pub const LOG_LOCATION: &str = "log";
 
 /// Pulls the systemId from the id.txt file, if one exists
 pub fn get_system_id() -> String {

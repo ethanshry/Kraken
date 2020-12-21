@@ -205,7 +205,7 @@ impl Query {
         for file in crate::file_utils::get_all_files_in_folder(&format!(
             "{}/{}",
             env!("CARGO_MANIFEST_DIR"),
-            "log"
+            crate::utils::LOG_LOCATION
         ))
         .unwrap_or_else(|_| Vec::new())
         {

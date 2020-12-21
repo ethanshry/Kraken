@@ -33,7 +33,7 @@ impl Executor for OrchestrationExecutor {
 
         // prepare local directories
         clear_tmp();
-        fs::create_dir_all("log").unwrap();
+        fs::create_dir_all(crate::utils::LOG_LOCATION).unwrap();
 
         // setup rabbitmq and UI
         let ui = OrchestrationExecutor::fetch_ui(self.db_ref.clone());

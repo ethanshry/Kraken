@@ -351,7 +351,10 @@ impl OrchestrationExecutor {
         let addr = node.rabbit_addr.clone();
         let handler = move |data: Vec<u8>| {
             let (deployment_id, message) = LogMessage::deconstruct_message(&data);
-            append_to_file(&format!("log/{}.log", &deployment_id), &message.message);
+            append_to_file(
+                &format!("{}/{}.log", crate::utils::LOG_LOCATION, &deployment_id),
+                &message.message,
+            );
         };
         tokio::spawn(async move {
             let broker = match Self::connect_to_rabbit_instance(&addr).await {
