@@ -169,6 +169,32 @@ mod tests {
     use tokio::runtime::Runtime;
 
     #[test]
+    fn get_tail_commit_for_branch_from_url_gets_tail_commits() {
+        let nonexistant_branch_commit = Runtime::new()
+            .expect("Failed to create tokio runtime")
+            .block_on(get_tail_commit_for_branch_from_url(
+                "fake-branch",
+                "http://github.com/ethanshry/kraken",
+            ));
+        assert!(nonexistant_branch_commit.is_none());
+        let real_branch = Runtime::new()
+            .expect("Failed to create tokio runtime")
+            .block_on(get_tail_commit_for_branch_from_url(
+                "main",
+                "http://github.com/ethanshry/kraken",
+            ));
+        assert!(real_branch.is_some());
+    }
+
+    #[test]
+    fn parse_git_url_parses_git_urls() {
+        assert!(parse_git_url("http://google.com").is_none());
+        assert!(parse_git_url("http://github.com").is_none());
+        assert!(parse_git_url("http://github.com/ethanshry/kraken").is_some());
+        assert!(parse_git_url("github.com/ethanshry/kraken").is_some());
+    }
+
+    #[test]
     fn check_for_file_in_repo_can_find_files() {
         let no_shipwreck_file_repo = Runtime::new()
             .expect("Failed to create tokio runtime")
@@ -186,6 +212,5 @@ mod tests {
                 "shipwreck.toml",
             ));
         assert!(shipwreck_file_repo.is_some());
-        println!("{:?}", shipwreck_file_repo);
     }
 }
