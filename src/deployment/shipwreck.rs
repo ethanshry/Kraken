@@ -14,6 +14,7 @@ pub struct Config {
 /// Data required to configure the specifics of a deployment
 #[derive(Serialize, Deserialize, Debug)]
 pub struct DeploymentConfig {
+    pub branch: String,
     pub lang: String,
     pub test: String,
     pub run: String,

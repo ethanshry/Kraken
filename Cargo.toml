@@ -8,8 +8,8 @@ edition = "2018"
 
 [dependencies]
 async-trait = "0.1"
-async-std = "1.8.0"
-base64 = "0.13.0"
+async-std = {version = "1.8.0", features = ["attributes"]}
+b64 = "0.4.0"
 bollard = "0.9"
 dotenv = "0.15.0"
 env_logger = "0.8"
