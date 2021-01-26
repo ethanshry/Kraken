@@ -13,6 +13,8 @@ use pnet::{datalink, ipnetwork::IpNetwork};
 const MIN_SUBNET_ADDR: u8 = 0;
 const MAX_SUBNET_ADDR: u8 = 255;
 
+// TODO look into libmdns for rust MDNS responder https://github.com/librespot-org/libmdns/blob/stable-0.6.x/examples/register.rs
+
 /// Gets the IPv4 LAN address for your device
 /// Will not return localhost
 /// # Examples
