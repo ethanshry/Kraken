@@ -17,6 +17,7 @@ extern crate juniper;
 mod api_routes;
 mod deployment;
 mod docker;
+mod cli_utils;
 mod file_utils;
 mod git_utils;
 mod gql_model;
@@ -34,7 +35,6 @@ use platform_executor::{ExecutionFaliure, Executor, GenericNode, NodeMode};
 async fn main() -> Result<(), ()> {
     dotenv::dotenv().ok();
     env_logger::init();
-
     let orchestrator_ip =
         match &std::env::var("SHOULD_SCAN_NETWORK").unwrap_or_else(|_| "YES".into())[..] {
             "NO" => {

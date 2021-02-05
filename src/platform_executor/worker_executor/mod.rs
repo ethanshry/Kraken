@@ -1,6 +1,6 @@
 //! Defines the Worker role, which handles core fucntionality of all devices on the platform
 use super::{DeploymentInfo, ExecutionFaliure, Executor, GenericNode, SetupFaliure, Task};
-use crate::docker::DockerBroker;
+use crate::{cli_utils, docker::DockerBroker};
 use crate::file_utils::{copy_dockerfile_to_dir, get_all_files_in_folder};
 use crate::git_utils::clone_remote_branch;
 use crate::gql_model::ApplicationStatus;
@@ -50,6 +50,7 @@ impl WorkerExecutor {
                 let lan_addr = crate::network::get_lan_addr();
                 let mut msg = SysinfoMessage::new(
                     &system_uuid,
+                    &cli_utils::get_node_name(),
                     &lan_addr.unwrap_or_else(|| String::from("127.0.0.1")),
                 );
                 loop {

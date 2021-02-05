@@ -190,6 +190,7 @@ mod test {
         let deployment = Deployment::new(
             "1234",
             "http://url.com",
+            "main",
             "1.0.0",
             "abcd1234",
             ApplicationStatus::Running,

@@ -13,6 +13,7 @@ use bollard::{
 use flate2::write::GzEncoder;
 use flate2::Compression;
 use futures_util::stream::StreamExt;
+use futures_util::stream::TryStreamExt;
 use log::{error, info};
 use std::collections::HashMap;
 use std::convert::TryFrom;
@@ -437,7 +438,35 @@ impl DockerBroker {
     }
 
     // TODO figure out what stats are actually useful: See #44
-    pub async fn get_container_stats(&self, _container_id: &str) {}
+    pub async fn get_container_stats(&self, _container_id: &str) {
+        // WIP
+        let stats = self
+            .conn
+            .stats(
+                "nifty_haslett",
+                Some(bollard::container::StatsOptions { stream: false }),
+            )
+            .take(1)
+            .map(|value| match value {
+                Ok(stats) => {
+                    println!("{:?}", stats);
+                    Ok(())
+                }
+                Err(e) => {
+                    return Err(e);
+                }
+            })
+            .try_collect::<Vec<()>>()
+            .await;
+        println!("2?: {:?}", stats);
+    }
+
+    // TODO figure out what stats are actually useful: See #44
+    pub async fn get_container_status(&self, _container_id: &str) {
+        // WIP
+        let inspect = self.conn.inspect_container("nifty_haslett", None).await;
+        println!("INSPECT: {:?}", inspect);
+    }
 
     /// Remove unused images from docker
     ///

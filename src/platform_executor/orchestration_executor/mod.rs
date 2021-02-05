@@ -45,13 +45,14 @@ pub struct OrchestrationExecutor {
 /// let url = validate_deployment("http://github.com/Kraken/scapenode")
 /// assert_eq!(url, Ok(_));
 /// ```
-pub async fn validate_deployment(git_url: &str) -> Result<String, ()> {
+pub async fn validate_deployment(git_url: &str, git_branch: &str) -> Result<String, ()> {
     match github_api::parse_git_url(git_url) {
         None => Err(()),
         Some(url_data) => {
             match github_api::check_for_file_in_repo(
                 &url_data.user,
                 &url_data.repo,
+                git_branch,
                 "shipwreck.toml",
             )
             .await

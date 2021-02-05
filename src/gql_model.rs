@@ -245,6 +245,7 @@ impl Orchestrator {
 pub struct Deployment {
     pub id: String,
     pub src_url: String,
+    pub git_branch: String,
     pub version: String,
     pub commit: String,
     pub status: (ApplicationStatus, SystemTime),
@@ -258,6 +259,7 @@ impl Deployment {
     pub fn new(
         id: &str,
         src_url: &str,
+        git_branch: &str,
         version: &str,
         commit: &str,
         status: ApplicationStatus,
@@ -268,6 +270,7 @@ impl Deployment {
         Deployment {
             id: id.to_owned(),
             src_url: src_url.to_owned(),
+            git_branch: git_branch.to_owned(),
             version: version.to_owned(),
             commit: commit.to_owned(),
             status: (status, SystemTime::now()),
@@ -293,6 +296,7 @@ impl Clone for Deployment {
         Deployment {
             id: self.id.clone(),
             src_url: self.src_url.clone(),
+            git_branch: self.git_branch.clone(),
             version: self.version.clone(),
             commit: self.commit.clone(),
             status: self.status.clone(),

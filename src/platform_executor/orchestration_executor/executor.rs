@@ -1,7 +1,7 @@
 //! Executor impl for OrchestrationExecutor
 
 use super::{ExecutionFaliure, Executor, GenericNode, OrchestrationExecutor, SetupFaliure, Task};
-use crate::file_utils::clear_tmp;
+use crate::{cli_utils, file_utils::clear_tmp};
 use crate::gql_model::{ApplicationStatus, Node};
 use crate::network::get_lan_addr;
 use crate::rabbit::{
@@ -26,7 +26,7 @@ impl Executor for OrchestrationExecutor {
             let mut db = arc.lock().unwrap();
             db.insert_node(&Node::new(
                 &node.system_id,
-                "Placeholder Model",
+                &cli_utils::get_node_name(),
                 &lan_addr.unwrap_or_else(|| String::from("127.0.0.1")),
             ));
         }
@@ -106,7 +106,7 @@ impl Executor for OrchestrationExecutor {
 
                         deployment.update_status(ApplicationStatus::ValidatingDeploymentData);
                         self.update_deployment_in_db(&deployment);
-                        match super::validate_deployment(&deployment.src_url).await {
+                        match super::validate_deployment(&deployment.src_url, &deployment.git_branch).await {
                             Err(_) => {
                                 warn!("Deployment failed validation {}", &deployment.id);
                                 {

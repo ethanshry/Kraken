@@ -117,12 +117,13 @@ pub async fn get_tail_commits_for_repo_branches(user: &str, repo: &str) -> Optio
 /// assert_eq!(check_for_file_in_repo("ethanshry", "Kraken-UI", "shipwreck.toml"), None);
 /// assert_eq!(check_for_file_in_repo("ethanshry", "scapenode", "shipwreck.toml"), Some(_));
 /// ```
-pub async fn check_for_file_in_repo(user: &str, repo: &str, file_path: &str) -> Option<String> {
+pub async fn check_for_file_in_repo(user: &str, repo: &str, branch_name: &str, file_path: &str) -> Option<String> {
     let url = format!(
-        "https://api.github.com/repos/{owner}/{repo}/contents/{file}",
+        "https://api.github.com/repos/{owner}/{repo}/contents/{file}?ref={branch_name}",
         owner = user,
         repo = repo,
-        file = file_path
+        file = file_path,
+        branch_name = branch_name
     );
 
     info!("Making request to: {}", url);
@@ -201,6 +202,7 @@ mod tests {
             .block_on(check_for_file_in_repo(
                 "ethanshry",
                 "Kraken-UI",
+                "main",
                 "shipwreck.toml",
             ));
         assert!(no_shipwreck_file_repo.is_none());
@@ -209,6 +211,7 @@ mod tests {
             .block_on(check_for_file_in_repo(
                 "ethanshry",
                 "scapegoat",
+                "main",
                 "shipwreck.toml",
             ));
         assert!(shipwreck_file_repo.is_some());

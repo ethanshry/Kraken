@@ -6,6 +6,7 @@ use std::iter::FromIterator;
 #[derive(PartialEq, Debug)]
 pub struct SysinfoMessage {
     pub system_identifier: String,
+    pub model_name: String,
     pub lan_addr: String,
     pub ram_free: u64,
     pub ram_used: u64,
@@ -14,9 +15,10 @@ pub struct SysinfoMessage {
 }
 
 impl SysinfoMessage {
-    pub fn new(system_identifier: &str, lan_addr: &str) -> SysinfoMessage {
+    pub fn new(system_identifier: &str, model_name: &str, lan_addr: &str) -> SysinfoMessage {
         SysinfoMessage {
             system_identifier: system_identifier.to_owned(),
+            model_name: model_name.to_owned(),
             lan_addr: lan_addr.to_owned(),
             ram_free: 0,
             ram_used: 0,
@@ -36,8 +38,9 @@ impl SysinfoMessage {
 impl RabbitMessage<SysinfoMessage> for SysinfoMessage {
     fn build_message(&self) -> Vec<u8> {
         format!(
-            "{}|{}|{}|{}|{}|{}",
+            "{}|{}|{}|{}|{}|{}|{}",
             self.system_identifier,
+            self.model_name,
             self.lan_addr,
             self.ram_free,
             self.ram_used,
@@ -54,14 +57,10 @@ impl RabbitMessage<SysinfoMessage> for SysinfoMessage {
                 .map(|s| s.to_string()),
         );
 
-        let mut msg = SysinfoMessage::new(res.get(0).unwrap(), res.get(1).unwrap());
+        let mut msg = SysinfoMessage::new(res.get(0).unwrap(), res.get(1).unwrap(), res.get(2).unwrap());
 
-        if res.len() == 6 {
+        if res.len() == 7 {
             msg.update_message(
-                res.get(2)
-                    .unwrap_or(&String::from("0"))
-                    .parse::<u64>()
-                    .unwrap_or(0),
                 res.get(3)
                     .unwrap_or(&String::from("0"))
                     .parse::<u64>()
@@ -71,6 +70,10 @@ impl RabbitMessage<SysinfoMessage> for SysinfoMessage {
                     .parse::<u64>()
                     .unwrap_or(0),
                 res.get(5)
+                    .unwrap_or(&String::from("0"))
+                    .parse::<u64>()
+                    .unwrap_or(0),
+                res.get(6)
                     .unwrap_or(&String::from("0"))
                     .parse::<f32>()
                     .unwrap_or(0.0),
@@ -83,7 +86,7 @@ impl RabbitMessage<SysinfoMessage> for SysinfoMessage {
 
 #[test]
 fn sysinfomessage_is_invertible() {
-    let mut left = SysinfoMessage::new("id", "127.0.0.1");
+    let mut left = SysinfoMessage::new("id", "test_model", "127.0.0.1");
     left.update_message(15, 15, 15, 1.5);
     let data = left.build_message();
 
