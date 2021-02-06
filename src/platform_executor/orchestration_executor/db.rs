@@ -196,6 +196,7 @@ mod test {
             ApplicationStatus::Running,
             "localhost:8000/log/1234",
             "localhost:9000",
+            "3000",
             "abcd",
         );
 

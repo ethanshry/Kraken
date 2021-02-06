@@ -33,7 +33,7 @@ pub struct AppConfig {
 /// Ensure the required keys have been parsed and are valid
 /// This will potentially include validation to ensure requested configs are platform-compliant (i.e. correct ports, etc)
 /// TODO flush this out
-pub fn validate_config(c: Option<Config>) -> Option<Config> {
+fn validate_config(c: Option<Config>) -> Option<Config> {
     match c {
         Some(c) => Some(c),
         None => None,
@@ -48,9 +48,14 @@ pub fn get_config_for_path(p: &str) -> Option<Config> {
             let mut file_data = String::new();
             file.read_to_string(&mut file_data).unwrap();
 
-            let data: Config = toml::from_str(&file_data).unwrap();
-            println!("{:?}", data);
-            Some(data)
+            get_config_for_string(&file_data)
         }
     }
+}
+
+/// Parses a config file from a shipwreck.toml from a string of data
+pub fn get_config_for_string(data: &str) -> Option<Config> {
+    let data: Config = toml::from_str(&data).unwrap();
+    println!("{:?}", data);
+    validate_config(Some(data))
 }

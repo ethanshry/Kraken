@@ -15,9 +15,9 @@
 extern crate juniper;
 
 mod api_routes;
+mod cli_utils;
 mod deployment;
 mod docker;
-mod cli_utils;
 mod file_utils;
 mod git_utils;
 mod gql_model;

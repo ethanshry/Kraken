@@ -78,6 +78,7 @@ impl Executor for WorkerExecutor {
                                 &node.system_id,
                                 node.broker.as_ref().unwrap(),
                                 &task.deployment_url.unwrap(),
+                                &task.git_branch.unwrap(),
                                 &task.deployment_id.unwrap(),
                             )
                             .await;

@@ -252,6 +252,7 @@ pub struct Deployment {
     pub status_history: Vec<(ApplicationStatus, SystemTime)>,
     pub results_url: String,
     pub deployment_url: String,
+    pub port: String,
     pub node: String, //Vec<Option<ApplicationInstance>>,
 }
 
@@ -265,6 +266,7 @@ impl Deployment {
         status: ApplicationStatus,
         results_url: &str,
         deployment_url: &str,
+        port: &str,
         node: &str, //&Vec<Option<ApplicationInstance>>,
     ) -> Deployment {
         Deployment {
@@ -277,6 +279,7 @@ impl Deployment {
             status_history: vec![],
             results_url: results_url.to_owned(),
             deployment_url: deployment_url.to_owned(),
+            port: port.to_owned(),
             node: node.to_owned(), //instances.to_owned(),
         }
     }
@@ -303,6 +306,7 @@ impl Clone for Deployment {
             status_history: self.status_history.clone(),
             results_url: self.results_url.clone(),
             deployment_url: self.deployment_url.clone(),
+            port: self.port.clone(),
             node: self.node.clone(),
         }
     }

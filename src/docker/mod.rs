@@ -438,34 +438,56 @@ impl DockerBroker {
     }
 
     // TODO figure out what stats are actually useful: See #44
-    pub async fn get_container_stats(&self, _container_id: &str) {
-        // WIP
-        let stats = self
-            .conn
-            .stats(
-                "nifty_haslett",
-                Some(bollard::container::StatsOptions { stream: false }),
-            )
-            .take(1)
-            .map(|value| match value {
-                Ok(stats) => {
-                    println!("{:?}", stats);
-                    Ok(())
-                }
-                Err(e) => {
-                    return Err(e);
-                }
-            })
-            .try_collect::<Vec<()>>()
-            .await;
-        println!("2?: {:?}", stats);
-    }
+    pub async fn get_container_stats(
+        conn: bollard::Docker,
+        container_id: &str,
+    ) -> Option<ContainerStatus> {
+        // container_name and container id are interchangable for inspect_container
+        let inspect = conn.inspect_container(container_id, None).await;
+        match inspect {
+            Ok(i) => {
+                let mut status = ContainerStatus {
+                    state: i
+                        .state
+                        .unwrap()
+                        .status
+                        .unwrap_or(bollard::models::ContainerStateStatusEnum::DEAD),
+                    size: i.size_root_fs.unwrap_or(0) as i32,
+                    mem_mb: 0,
+                    mem_max_mb: 0,
+                    cpu_usage: 0.0,
+                };
+                conn.stats(
+                    container_id,
+                    Some(bollard::container::StatsOptions { stream: false }),
+                )
+                .take(1)
+                .map(|value| match value {
+                    Ok(stats) => {
+                        //println!("{:?}", stats);
+                        status.mem_mb = (stats.memory_stats.usage.unwrap_or(0) / 1_000_000) as i32;
+                        status.mem_max_mb =
+                            (stats.memory_stats.max_usage.unwrap_or(0) / 1_000_000) as i32;
 
-    // TODO figure out what stats are actually useful: See #44
-    pub async fn get_container_status(&self, _container_id: &str) {
-        // WIP
-        let inspect = self.conn.inspect_container("nifty_haslett", None).await;
-        println!("INSPECT: {:?}", inspect);
+                        status.cpu_usage = ((stats.cpu_stats.cpu_usage.total_usage as f32)
+                            - (stats.precpu_stats.cpu_usage.total_usage as f32))
+                            / ((stats.cpu_stats.system_cpu_usage.unwrap() as f32)
+                                - (stats.precpu_stats.system_cpu_usage.unwrap() as f32))
+                            * (stats.cpu_stats.cpu_usage.percpu_usage.unwrap().len() as f32)
+                            * 100.0 as f32;
+                        Ok(())
+                    }
+                    Err(e) => {
+                        return Err(e);
+                    }
+                })
+                .try_collect::<Vec<()>>()
+                .await
+                .unwrap();
+                Some(status)
+            }
+            Err(_) => None,
+        }
     }
 
     /// Remove unused images from docker
@@ -537,7 +559,16 @@ impl DockerBroker {
     }
 }
 
+#[derive(Debug)]
 pub struct DockerImageBuildResult {
     pub log: Vec<String>,
     pub image_id: String,
+}
+#[derive(Debug)]
+pub struct ContainerStatus {
+    state: bollard::models::ContainerStateStatusEnum,
+    size: i32,
+    mem_mb: i32,
+    mem_max_mb: i32,
+    cpu_usage: f32,
 }

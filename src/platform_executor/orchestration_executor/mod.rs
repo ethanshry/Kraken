@@ -40,12 +40,17 @@ pub struct OrchestrationExecutor {
 ///
 /// * `git_url` - The URL to a github repository containing a shipwreck.toml
 ///
+/// # Returns
+///
+/// * Ok((commit_hash, shipwreck.toml data))
+/// * Err(())
+///
 /// # Examples
 /// ```
-/// let url = validate_deployment("http://github.com/Kraken/scapenode")
+/// let url = validate_deployment("http://github.com/Kraken/scapenode", "main")
 /// assert_eq!(url, Ok(_));
 /// ```
-pub async fn validate_deployment(git_url: &str, git_branch: &str) -> Result<String, ()> {
+pub async fn validate_deployment(git_url: &str, git_branch: &str) -> Result<(String, String), ()> {
     match github_api::parse_git_url(git_url) {
         None => Err(()),
         Some(url_data) => {
@@ -57,7 +62,7 @@ pub async fn validate_deployment(git_url: &str, git_branch: &str) -> Result<Stri
             )
             .await
             {
-                Some(_) => {
+                Some(shipwreck_data) => {
                     let commits = github_api::get_tail_commits_for_repo_branches(
                         &url_data.user,
                         &url_data.repo,
@@ -67,10 +72,8 @@ pub async fn validate_deployment(git_url: &str, git_branch: &str) -> Result<Stri
                         None => Err(()),
                         Some(commits) => {
                             for c in commits {
-                                // TODO fix so any branch is accepted (#53)
-                                // Allow legacy 'master' branches
-                                if c.name == "master" || c.name == "main" {
-                                    return Ok(c.commit.sha);
+                                if c.name == git_branch {
+                                    return Ok((c.commit.sha, shipwreck_data));
                                 }
                             }
                             Err(())

@@ -1,13 +1,13 @@
 //! Executor impl for OrchestrationExecutor
 
 use super::{ExecutionFaliure, Executor, GenericNode, OrchestrationExecutor, SetupFaliure, Task};
-use crate::{cli_utils, file_utils::clear_tmp};
 use crate::gql_model::{ApplicationStatus, Node};
 use crate::network::get_lan_addr;
 use crate::rabbit::{
     work_request_message::{WorkRequestMessage, WorkRequestType},
     QueueLabel, RabbitMessage,
 };
+use crate::{cli_utils, file_utils::clear_tmp};
 use async_trait::async_trait;
 use futures::future;
 use log::{error, info, warn};
@@ -106,7 +106,12 @@ impl Executor for OrchestrationExecutor {
 
                         deployment.update_status(ApplicationStatus::ValidatingDeploymentData);
                         self.update_deployment_in_db(&deployment);
-                        match super::validate_deployment(&deployment.src_url, &deployment.git_branch).await {
+                        match super::validate_deployment(
+                            &deployment.src_url,
+                            &deployment.git_branch,
+                        )
+                        .await
+                        {
                             Err(_) => {
                                 warn!("Deployment failed validation {}", &deployment.id);
                                 {
@@ -116,9 +121,17 @@ impl Executor for OrchestrationExecutor {
                                     db.update_deployment(&deployment.id, &deployment);
                                 }
                             }
-                            Ok(commit) => {
+                            Ok((commit, shipwreck_string)) => {
+                                let deployment_config =
+                                    crate::deployment::shipwreck::get_config_for_string(
+                                        &shipwreck_string,
+                                    );
+
                                 deployment.update_status(ApplicationStatus::DelegatingDeployment);
                                 deployment.commit = commit;
+                                if let Some(c) = deployment_config {
+                                    deployment.port = format!("{}", c.config.port);
+                                }
                                 self.update_deployment_in_db(&deployment);
                                 let nodes = super::do_db_task(self, |db| -> Option<Vec<Node>> {
                                     db.get_nodes()
@@ -152,6 +165,7 @@ impl Executor for OrchestrationExecutor {
                                             WorkRequestType::RequestDeployment,
                                             Some(&deployment.id),
                                             Some(&deployment.src_url),
+                                            Some(&deployment.git_branch),
                                             None,
                                         );
                                         let publisher =
@@ -173,7 +187,7 @@ impl Executor for OrchestrationExecutor {
                     }
                     ApplicationStatus::UpdateRequested => {
                         let commit = super::github_api::get_tail_commit_for_branch_from_url(
-                            "main",
+                            &deployment.git_branch,
                             &deployment.src_url,
                         )
                         .await;
@@ -192,6 +206,7 @@ impl Executor for OrchestrationExecutor {
                                     let msg = WorkRequestMessage::new(
                                         WorkRequestType::CancelDeployment,
                                         Some(&deployment.id),
+                                        Some(&deployment.git_branch),
                                         None,
                                         None,
                                     );
@@ -202,6 +217,7 @@ impl Executor for OrchestrationExecutor {
                                         WorkRequestType::RequestDeployment,
                                         Some(&deployment.id),
                                         Some(&deployment.src_url),
+                                        Some(&deployment.git_branch),
                                         None,
                                     );
                                     msg.send(&publisher, &deployment.node).await;
@@ -222,6 +238,7 @@ impl Executor for OrchestrationExecutor {
                         let msg = WorkRequestMessage::new(
                             WorkRequestType::CancelDeployment,
                             Some(&deployment.id),
+                            None,
                             None,
                             None,
                         );

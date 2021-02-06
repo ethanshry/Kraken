@@ -1,6 +1,5 @@
 //! Defines the Worker role, which handles core fucntionality of all devices on the platform
 use super::{DeploymentInfo, ExecutionFaliure, Executor, GenericNode, SetupFaliure, Task};
-use crate::{cli_utils, docker::DockerBroker};
 use crate::file_utils::{copy_dockerfile_to_dir, get_all_files_in_folder};
 use crate::git_utils::clone_remote_branch;
 use crate::gql_model::ApplicationStatus;
@@ -9,6 +8,7 @@ use crate::rabbit::{
     deployment_message::DeploymentMessage, log_message::LogMessage, QueueLabel, RabbitBroker,
     RabbitMessage,
 };
+use crate::{cli_utils, docker::DockerBroker};
 use log::{error, info};
 use sysinfo::SystemExt;
 
@@ -75,6 +75,7 @@ pub async fn handle_deployment(
     system_id: &str,
     broker: &RabbitBroker,
     git_uri: &str,
+    git_branch: &str,
     id: &str,
 ) -> Result<DeploymentInfo, DeploymentInfo> {
     let container_guid = String::from(id);
@@ -86,7 +87,7 @@ pub async fn handle_deployment(
     msg.send(&publisher, QueueLabel::Deployment.as_str()).await;
 
     // TODO make function to execute a thing in a tmp dir which auto-cleans itself (#51)
-    std::fs::remove_dir_all(&format!("tmp/deployment/{}", id));
+    std::fs::remove_dir_all(&format!("tmp/deployment/{}", id)).unwrap();
     let tmp_dir_path = &format!("tmp/deployment/{}", id);
 
     info!("Creating Container {}", &container_guid);
@@ -99,7 +100,7 @@ pub async fn handle_deployment(
     msg.send(&publisher, QueueLabel::Deployment.as_str()).await;
 
     info!("Retrieving git repository for container from {}", git_uri);
-    clone_remote_branch(git_uri, "main", tmp_dir_path)
+    clone_remote_branch(git_uri, git_branch, tmp_dir_path)
         .wait()
         .unwrap();
 

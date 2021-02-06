@@ -227,7 +227,11 @@ pub struct Mutation;
 #[juniper::object(Context = ManagedDatabase)]
 impl Mutation {
     /// Request the platform create a deployment from the specified repository url
-    fn create_deployment(context: &ManagedDatabase, deployment_url: String, git_branch: String) -> FieldResult<String> {
+    fn create_deployment(
+        context: &ManagedDatabase,
+        deployment_url: String,
+        git_branch: String,
+    ) -> FieldResult<String> {
         let uuid = Uuid::new_v4().to_hyphenated().to_string();
         context
             .db
@@ -240,6 +244,7 @@ impl Mutation {
                 "",
                 "",
                 ApplicationStatus::DeploymentRequested,
+                "",
                 "",
                 "",
                 "", //&vec![None],
