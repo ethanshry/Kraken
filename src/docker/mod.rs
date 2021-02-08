@@ -15,6 +15,7 @@ use flate2::Compression;
 use futures_util::stream::StreamExt;
 use futures_util::stream::TryStreamExt;
 use log::{error, info};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::fs;
@@ -437,13 +438,9 @@ impl DockerBroker {
         info!("Killing docker container {}", container_id);
     }
 
-    // TODO figure out what stats are actually useful: See #44
-    pub async fn get_container_stats(
-        conn: bollard::Docker,
-        container_id: &str,
-    ) -> Option<ContainerStatus> {
+    pub async fn get_container_status(&self, container_id: &str) -> Option<ContainerStatus> {
         // container_name and container id are interchangable for inspect_container
-        let inspect = conn.inspect_container(container_id, None).await;
+        let inspect = self.conn.inspect_container(container_id, None).await;
         match inspect {
             Ok(i) => {
                 let mut status = ContainerStatus {
@@ -457,33 +454,35 @@ impl DockerBroker {
                     mem_max_mb: 0,
                     cpu_usage: 0.0,
                 };
-                conn.stats(
-                    container_id,
-                    Some(bollard::container::StatsOptions { stream: false }),
-                )
-                .take(1)
-                .map(|value| match value {
-                    Ok(stats) => {
-                        //println!("{:?}", stats);
-                        status.mem_mb = (stats.memory_stats.usage.unwrap_or(0) / 1_000_000) as i32;
-                        status.mem_max_mb =
-                            (stats.memory_stats.max_usage.unwrap_or(0) / 1_000_000) as i32;
-
-                        status.cpu_usage = ((stats.cpu_stats.cpu_usage.total_usage as f32)
-                            - (stats.precpu_stats.cpu_usage.total_usage as f32))
-                            / ((stats.cpu_stats.system_cpu_usage.unwrap() as f32)
-                                - (stats.precpu_stats.system_cpu_usage.unwrap() as f32))
-                            * (stats.cpu_stats.cpu_usage.percpu_usage.unwrap().len() as f32)
-                            * 100.0 as f32;
-                        Ok(())
-                    }
-                    Err(e) => {
-                        return Err(e);
-                    }
-                })
-                .try_collect::<Vec<()>>()
-                .await
-                .unwrap();
+                self.conn
+                    .stats(
+                        container_id,
+                        Some(bollard::container::StatsOptions { stream: false }),
+                    )
+                    .take(1)
+                    .map(|value| match value {
+                        Ok(stats) => {
+                            status.mem_mb =
+                                (stats.memory_stats.usage.unwrap_or(0) / 1_000_000) as i32;
+                            status.mem_max_mb =
+                                (stats.memory_stats.max_usage.unwrap_or(0) / 1_000_000) as i32;
+                            // see https://github.com/moby/moby/blob/eb131c5383db8cac633919f82abad86c99bffbe5/cli/command/container/stats_helpers.go#L175
+                            // for calculation details
+                            status.cpu_usage = ((stats.cpu_stats.cpu_usage.total_usage as f32)
+                                - (stats.precpu_stats.cpu_usage.total_usage as f32))
+                                / ((stats.cpu_stats.system_cpu_usage.unwrap() as f32)
+                                    - (stats.precpu_stats.system_cpu_usage.unwrap() as f32))
+                                * (stats.cpu_stats.cpu_usage.percpu_usage.unwrap().len() as f32)
+                                * 100.0 as f32;
+                            Ok(())
+                        }
+                        Err(e) => {
+                            return Err(e);
+                        }
+                    })
+                    .try_collect::<Vec<()>>()
+                    .await
+                    .unwrap();
                 Some(status)
             }
             Err(_) => None,
@@ -564,11 +563,11 @@ pub struct DockerImageBuildResult {
     pub log: Vec<String>,
     pub image_id: String,
 }
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize, PartialEq)]
 pub struct ContainerStatus {
-    state: bollard::models::ContainerStateStatusEnum,
-    size: i32,
-    mem_mb: i32,
-    mem_max_mb: i32,
-    cpu_usage: f32,
+    pub state: bollard::models::ContainerStateStatusEnum,
+    pub size: i32,
+    pub mem_mb: i32,
+    pub mem_max_mb: i32,
+    pub cpu_usage: f32,
 }

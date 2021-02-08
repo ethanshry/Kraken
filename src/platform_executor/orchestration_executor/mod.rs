@@ -319,7 +319,10 @@ impl OrchestrationExecutor {
             match deployment {
                 Some(d) => {
                     let mut updated_deployment = d.clone();
-                    updated_deployment.update_status(message.deployment_status.clone());
+                    updated_deployment.update_status(&message.deployment_status.clone());
+                    if let Some(status) = message.container_status {
+                        updated_deployment.update_container_status(&status);
+                    }
                     db.update_deployment(&message.deployment_id, &updated_deployment);
                     info!(
                         "{} : Deployment {}\n\t{} : {}",

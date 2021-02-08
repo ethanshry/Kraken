@@ -87,7 +87,7 @@ pub async fn handle_deployment(
     msg.send(&publisher, QueueLabel::Deployment.as_str()).await;
 
     // TODO make function to execute a thing in a tmp dir which auto-cleans itself (#51)
-    std::fs::remove_dir_all(&format!("tmp/deployment/{}", id)).unwrap();
+    std::fs::remove_dir_all(&format!("tmp/deployment/{}", id));
     let tmp_dir_path = &format!("tmp/deployment/{}", id);
 
     info!("Creating Container {}", &container_guid);
@@ -95,6 +95,7 @@ pub async fn handle_deployment(
     msg.update_message(
         ApplicationStatus::RetrievingApplicationData,
         &format!("Retrieving Application Data from {}", git_uri),
+        None,
     );
 
     msg.send(&publisher, QueueLabel::Deployment.as_str()).await;
@@ -115,6 +116,7 @@ pub async fn handle_deployment(
             msg.update_message(
                 ApplicationStatus::Errored,
                 &"shipwreck.toml not detected or incompatible format, please ensure your file is compliant",
+                None
             );
             msg.send(&publisher, QueueLabel::Deployment.as_str()).await;
             return Err(deployment_info);
@@ -135,6 +137,7 @@ pub async fn handle_deployment(
             msg.update_message(
                 ApplicationStatus::Errored,
                 &"shipwreck.toml specified an unsupported language. check the Kraken-UI for supported languages",
+                None
             );
             msg.send(&publisher, QueueLabel::Deployment.as_str()).await;
             return Err(deployment_info);
@@ -152,6 +155,7 @@ pub async fn handle_deployment(
                 msg.update_message(
                     ApplicationStatus::Errored,
                     &"The Deployment is configured to use a custom Dockerfile, and one could not be found in the repository root.",
+                    None
                 );
                 msg.send(&publisher, QueueLabel::Deployment.as_str()).await;
                 return Err(deployment_info);
@@ -161,7 +165,7 @@ pub async fn handle_deployment(
 
     info!("module path is {}", module_path!());
 
-    msg.update_message(ApplicationStatus::BuildingDeployment, "");
+    msg.update_message(ApplicationStatus::BuildingDeployment, "", None);
 
     msg.send(&publisher, QueueLabel::Deployment.as_str()).await;
 
@@ -173,7 +177,11 @@ pub async fn handle_deployment(
         if let Ok(r) = res {
             info!("----- Docker Build Results for {} -----", r.image_id);
             info!("{:?}", r.log);
-            msg.update_message(ApplicationStatus::BuildingDeployment, &r.log.join("\n"));
+            msg.update_message(
+                ApplicationStatus::BuildingDeployment,
+                &r.log.join("\n"),
+                None,
+            );
             msg.send(&publisher, QueueLabel::Deployment.as_str()).await;
             msg.update_message(
                 ApplicationStatus::BuildingDeployment,
@@ -182,6 +190,7 @@ pub async fn handle_deployment(
                     &git_uri,
                     &r.log.join("\n")
                 ),
+                None,
             );
 
             // Send build logs to appropriate logfile
@@ -192,22 +201,23 @@ pub async fn handle_deployment(
             msg.send(&publisher, QueueLabel::Deployment.as_str()).await;
 
             // Image build went ok, now deploy the container
-            msg.update_message(ApplicationStatus::Deploying, "");
+            msg.update_message(ApplicationStatus::Deploying, "", None);
             msg.send(&publisher, QueueLabel::Deployment.as_str()).await;
 
             let ids = docker.start_container(&r.image_id, port).await;
 
             if let Ok(id) = ids {
                 info!("Docker container started for {} with id {}", git_uri, id);
-                msg.update_message(ApplicationStatus::Running, &id);
+                let status = docker.get_container_status(&id).await;
+                msg.update_message(ApplicationStatus::Running, &id, status);
                 msg.send(&publisher, QueueLabel::Deployment.as_str()).await;
             } else {
-                msg.update_message(ApplicationStatus::Errored, "Error in deployment");
+                msg.update_message(ApplicationStatus::Errored, "Error in deployment", None);
                 msg.send(&publisher, QueueLabel::Deployment.as_str()).await;
                 return Err(deployment_info);
             }
         } else {
-            msg.update_message(ApplicationStatus::Errored, "Error in build process");
+            msg.update_message(ApplicationStatus::Errored, "Error in build process", None);
             msg.send(&publisher, QueueLabel::Deployment.as_str()).await;
             error!("Failed to build docker image for {}", &git_uri);
             return Err(deployment_info);
@@ -228,7 +238,7 @@ pub async fn kill_deployment(
     let publisher = broker.get_channel().await;
 
     let mut msg = DeploymentMessage::new(&system_id, &container_guid);
-    msg.update_message(ApplicationStatus::DestructionInProgress, "");
+    msg.update_message(ApplicationStatus::DestructionInProgress, "", None);
     msg.send(&publisher, QueueLabel::Deployment.as_str()).await;
 
     let docker = DockerBroker::new().await;
@@ -236,7 +246,7 @@ pub async fn kill_deployment(
         docker.stop_container(&container_guid).await;
         docker.prune_images(Some("1s")).await;
         docker.prune_containers(Some("1s")).await;
-        msg.update_message(ApplicationStatus::Destroyed, "");
+        msg.update_message(ApplicationStatus::Destroyed, "", None);
         msg.send(&publisher, QueueLabel::Deployment.as_str()).await;
         return Ok(container_guid.to_string());
     }

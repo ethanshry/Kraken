@@ -1,15 +1,22 @@
 //! Utilities interfacing with misc cli tools
 
-use log::{warn};
+use log::warn;
 
 /// Gets user-friendly node name
 pub fn get_node_name() -> String {
     let get_name = || -> Result<String, String> {
-        let mut res = std::process::Command::new("uname")
-        .arg("-n")
-        .spawn().expect("err");
-        let name = res.wait().expect("err");
-        Ok(format!("{}", name))
+        let res = std::process::Command::new("uname")
+            .arg("-n")
+            .output()
+            .expect("err");
+        let mut name = std::str::from_utf8(&res.stdout).expect("err in parse");\
+        if name.ends_with('\n') {
+            name.pop();
+            if name.ends_with('\r') {
+                name.pop();
+            }
+        }
+        Ok(String::from(name))
     };
     match get_name() {
         Ok(n) => n,

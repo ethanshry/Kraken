@@ -111,7 +111,7 @@ impl Executor for WorkerExecutor {
 
         let mut nodes_to_remove = vec![];
         for (index, d) in node.deployments.iter_mut().enumerate() {
-            // if more than a second has passed, check for logs
+            // if more than a second has passed, check for logs and get updated deployment status
             if d.last_log_time
                 .elapsed()
                 .unwrap_or_else(|_| std::time::Duration::new(0, 0))
@@ -128,6 +128,10 @@ impl Executor for WorkerExecutor {
                         let mut msg = LogMessage::new(&d.deployment_id);
                         msg.update_message(&logs.join(""));
                         msg.send(&publisher, QueueLabel::Log.as_str()).await;
+                    }
+
+                    if let Some(stats) = docker.get_container_status(&d.deployment_id).await {
+                        // TODO send stats somewhere
                     }
                 }
             }

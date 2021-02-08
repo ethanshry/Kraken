@@ -90,8 +90,28 @@ impl Deployment {
         self.commit.as_str()
     }
 
+    fn port(&self) -> &str {
+        self.port.as_str()
+    }
+
     fn status(&self) -> ApplicationStatus {
         self.status.0.clone()
+    }
+
+    pub fn size(&self) -> i32 {
+        self.size
+    }
+
+    pub fn mem_mb(&self) -> i32 {
+        self.mem_mb
+    }
+
+    pub fn max_mem_mb(&self) -> i32 {
+        self.max_mem_mb
+    }
+
+    pub fn cpu_usage(&self) -> f64 {
+        self.cpu_usage as f64
     }
 
     fn status_history(&self) -> Vec<TemporalApplicationStatus> {
@@ -257,7 +277,7 @@ impl Mutation {
         let mut db = context.db.lock().unwrap();
         match db.get_deployment(&deployment_id) {
             Some(mut d) => {
-                d.update_status(ApplicationStatus::UpdateRequested);
+                d.update_status(&ApplicationStatus::UpdateRequested);
                 db.update_deployment(&deployment_id, &d);
                 Ok(true)
             }
@@ -273,7 +293,7 @@ impl Mutation {
         let mut db = context.db.lock().unwrap();
         match db.get_deployment(&deployment_id) {
             Some(mut d) => {
-                d.update_status(ApplicationStatus::DestructionRequested);
+                d.update_status(&ApplicationStatus::DestructionRequested);
                 db.update_deployment(&deployment_id, &d);
                 Ok(true)
             }

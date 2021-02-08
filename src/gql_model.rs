@@ -254,6 +254,10 @@ pub struct Deployment {
     pub deployment_url: String,
     pub port: String,
     pub node: String, //Vec<Option<ApplicationInstance>>,
+    pub size: i32,
+    pub mem_mb: i32,
+    pub max_mem_mb: i32,
+    pub cpu_usage: f32,
 }
 
 impl Deployment {
@@ -281,12 +285,23 @@ impl Deployment {
             deployment_url: deployment_url.to_owned(),
             port: port.to_owned(),
             node: node.to_owned(), //instances.to_owned(),
+            size: 0,
+            mem_mb: 0,
+            max_mem_mb: 0,
+            cpu_usage: 0.0,
         }
     }
 
-    pub fn update_status(&mut self, new_status: ApplicationStatus) {
+    pub fn update_status(&mut self, new_status: &ApplicationStatus) {
         self.status_history.push(self.status.clone());
-        self.status = (new_status, SystemTime::now());
+        self.status = (new_status.clone(), SystemTime::now());
+    }
+
+    pub fn update_container_status(&mut self, stats: &crate::docker::ContainerStatus) {
+        self.size = stats.size;
+        self.mem_mb = stats.mem_mb;
+        self.max_mem_mb = stats.mem_max_mb;
+        self.cpu_usage = stats.cpu_usage;
     }
 
     pub fn remove_instance(&mut self, _instance_id: &str) {
@@ -308,6 +323,10 @@ impl Clone for Deployment {
             deployment_url: self.deployment_url.clone(),
             port: self.port.clone(),
             node: self.node.clone(),
+            size: self.size,
+            mem_mb: self.mem_mb,
+            max_mem_mb: self.max_mem_mb,
+            cpu_usage: self.cpu_usage,
         }
     }
 }

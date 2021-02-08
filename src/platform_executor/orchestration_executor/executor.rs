@@ -104,7 +104,7 @@ impl Executor for OrchestrationExecutor {
                     ApplicationStatus::DeploymentRequested => {
                         // Look for free nodes to distribute tasks to
 
-                        deployment.update_status(ApplicationStatus::ValidatingDeploymentData);
+                        deployment.update_status(&ApplicationStatus::ValidatingDeploymentData);
                         self.update_deployment_in_db(&deployment);
                         match super::validate_deployment(
                             &deployment.src_url,
@@ -117,7 +117,7 @@ impl Executor for OrchestrationExecutor {
                                 {
                                     let arc = self.db_ref.clone();
                                     let mut db = arc.lock().unwrap();
-                                    deployment.update_status(ApplicationStatus::Errored);
+                                    deployment.update_status(&ApplicationStatus::Errored);
                                     db.update_deployment(&deployment.id, &deployment);
                                 }
                             }
@@ -127,7 +127,7 @@ impl Executor for OrchestrationExecutor {
                                         &shipwreck_string,
                                     );
 
-                                deployment.update_status(ApplicationStatus::DelegatingDeployment);
+                                deployment.update_status(&ApplicationStatus::DelegatingDeployment);
                                 deployment.commit = commit;
                                 if let Some(c) = deployment_config {
                                     deployment.port = format!("{}", c.config.port);
@@ -143,7 +143,7 @@ impl Executor for OrchestrationExecutor {
                                             "No node available to accept deployment {}",
                                             &deployment.id
                                         );
-                                        deployment.update_status(ApplicationStatus::Errored);
+                                        deployment.update_status(&ApplicationStatus::Errored);
                                         self.update_deployment_in_db(&deployment);
                                     }
                                     Some(nodes) => {
@@ -158,7 +158,7 @@ impl Executor for OrchestrationExecutor {
                                         }
 
                                         deployment.node = curr_node.id.clone();
-                                        deployment.update_status(ApplicationStatus::Errored);
+                                        deployment.update_status(&ApplicationStatus::Errored);
                                         self.update_deployment_in_db(&deployment);
                                         // Send work to curr_node
                                         let msg = WorkRequestMessage::new(
@@ -201,7 +201,7 @@ impl Executor for OrchestrationExecutor {
                                         &deployment.id
                                     );
                                     deployment
-                                        .update_status(ApplicationStatus::DelegatingDestruction);
+                                        .update_status(&ApplicationStatus::DelegatingDestruction);
                                     self.update_deployment_in_db(&deployment);
                                     let msg = WorkRequestMessage::new(
                                         WorkRequestType::CancelDeployment,
@@ -223,14 +223,14 @@ impl Executor for OrchestrationExecutor {
                                     msg.send(&publisher, &deployment.node).await;
                                 } else {
                                     info!("Update requested for up-to-date deployment");
-                                    deployment.update_status(ApplicationStatus::Running);
+                                    deployment.update_status(&ApplicationStatus::Running);
                                     self.update_deployment_in_db(&deployment);
                                 }
                             }
                         }
                     }
                     ApplicationStatus::DestructionRequested => {
-                        deployment.update_status(ApplicationStatus::DelegatingDestruction);
+                        deployment.update_status(&ApplicationStatus::DelegatingDestruction);
                         super::do_db_task(self, |db| {
                             db.update_deployment(&deployment.id, &deployment);
                             db.remove_deployment_from_nodes(&deployment.id);
