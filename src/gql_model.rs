@@ -37,6 +37,7 @@ impl Service {
 pub struct Node {
     pub id: String,
     pub model: String,
+    pub addr: String,
     uptime: u64,
     ram_free: u64,
     ram_used: u64,
@@ -50,6 +51,7 @@ impl Clone for Node {
         let mut node = Node {
             id: self.id.to_owned(),
             model: self.model.to_owned(),
+            addr: self.addr.clone(),
             ram_free: self.ram_free,
             ram_used: self.ram_used,
             load_avg_5: self.load_avg_5,
@@ -71,21 +73,15 @@ impl Clone for Node {
 // non-gql impl block for Node
 // TODO rename so this makes more sense (is really node-info or something)
 impl Node {
-    pub fn new(
-        id: &str,
-        model: &str,
-        uptime: u64,
-        ram_free: u64,
-        ram_used: u64,
-        load_avg_5: f32,
-    ) -> Node {
+    pub fn new(id: &str, model: &str, addr: &str) -> Node {
         Node {
             id: id.to_owned(),
             model: model.to_owned(),
-            uptime,
-            ram_free,
-            ram_used,
-            load_avg_5,
+            addr: addr.to_owned(),
+            uptime: 0,
+            ram_free: 0,
+            ram_used: 0,
+            load_avg_5: 0.0,
             deployments: vec![],
             services: vec![],
         }
@@ -127,6 +123,7 @@ impl Node {
     pub fn from_incomplete(
         id: &str,
         model: Option<&str>,
+        addr: &str,
         ram_free: Option<u64>,
         ram_used: Option<u64>,
         uptime: Option<u64>,
@@ -136,29 +133,27 @@ impl Node {
     ) -> Node {
         // TODO find a cleaner way to do this
         // Would like to model.unwrap_or("placeholder") or similiar
-        Node::new(
+        let mut n = Node::new(
             id,
             match model {
                 Some(m) => m,
                 None => "placeholder_model",
             },
-            match uptime {
-                Some(r) => r,
-                None => 0,
-            },
-            match ram_free {
-                Some(r) => r,
-                None => 0,
-            },
-            match ram_used {
-                Some(r) => r,
-                None => 0,
-            },
-            match load_avg_5 {
-                Some(r) => r,
-                None => 0.0,
-            },
-        )
+            addr,
+        );
+        if let Some(u) = uptime {
+            n.uptime = u;
+        }
+        if let Some(r) = ram_free {
+            n.ram_free = r;
+        }
+        if let Some(r) = ram_used {
+            n.ram_used = r;
+        }
+        if let Some(l) = load_avg_5 {
+            n.load_avg_5 = l;
+        }
+        n
     }
 
     pub fn add_service(&mut self, service: Service) {
@@ -250,42 +245,63 @@ impl Orchestrator {
 pub struct Deployment {
     pub id: String,
     pub src_url: String,
+    pub git_branch: String,
     pub version: String,
     pub commit: String,
     pub status: (ApplicationStatus, SystemTime),
     pub status_history: Vec<(ApplicationStatus, SystemTime)>,
     pub results_url: String,
     pub deployment_url: String,
+    pub port: String,
     pub node: String, //Vec<Option<ApplicationInstance>>,
+    pub size: i32,
+    pub mem_mb: i32,
+    pub max_mem_mb: i32,
+    pub cpu_usage: f32,
 }
 
 impl Deployment {
     pub fn new(
         id: &str,
         src_url: &str,
+        git_branch: &str,
         version: &str,
         commit: &str,
         status: ApplicationStatus,
         results_url: &str,
         deployment_url: &str,
+        port: &str,
         node: &str, //&Vec<Option<ApplicationInstance>>,
     ) -> Deployment {
         Deployment {
             id: id.to_owned(),
             src_url: src_url.to_owned(),
+            git_branch: git_branch.to_owned(),
             version: version.to_owned(),
             commit: commit.to_owned(),
             status: (status, SystemTime::now()),
             status_history: vec![],
             results_url: results_url.to_owned(),
             deployment_url: deployment_url.to_owned(),
+            port: port.to_owned(),
             node: node.to_owned(), //instances.to_owned(),
+            size: 0,
+            mem_mb: 0,
+            max_mem_mb: 0,
+            cpu_usage: 0.0,
         }
     }
 
-    pub fn update_status(&mut self, new_status: ApplicationStatus) {
+    pub fn update_status(&mut self, new_status: &ApplicationStatus) {
         self.status_history.push(self.status.clone());
-        self.status = (new_status, SystemTime::now());
+        self.status = (new_status.clone(), SystemTime::now());
+    }
+
+    pub fn update_container_status(&mut self, stats: &crate::docker::ContainerStatus) {
+        self.size = stats.size;
+        self.mem_mb = stats.mem_mb;
+        self.max_mem_mb = stats.mem_max_mb;
+        self.cpu_usage = stats.cpu_usage;
     }
 
     pub fn remove_instance(&mut self, _instance_id: &str) {
@@ -298,13 +314,19 @@ impl Clone for Deployment {
         Deployment {
             id: self.id.clone(),
             src_url: self.src_url.clone(),
+            git_branch: self.git_branch.clone(),
             version: self.version.clone(),
             commit: self.commit.clone(),
             status: self.status.clone(),
             status_history: self.status_history.clone(),
             results_url: self.results_url.clone(),
             deployment_url: self.deployment_url.clone(),
+            port: self.port.clone(),
             node: self.node.clone(),
+            size: self.size,
+            mem_mb: self.mem_mb,
+            max_mem_mb: self.max_mem_mb,
+            cpu_usage: self.cpu_usage,
         }
     }
 }

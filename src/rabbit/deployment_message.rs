@@ -11,6 +11,7 @@ pub struct DeploymentMessage {
     pub deployment_id: String,
     pub deployment_status: ApplicationStatus,
     pub deployment_status_description: String,
+    pub container_status: Option<crate::docker::ContainerStatus>,
 }
 
 impl DeploymentMessage {
@@ -20,23 +21,33 @@ impl DeploymentMessage {
             deployment_id: deployment_id.to_owned(),
             deployment_status: ApplicationStatus::DeploymentRequested,
             deployment_status_description: "".to_owned(),
+            container_status: None,
         }
     }
 
-    pub fn update_message(&mut self, s: ApplicationStatus, descr: &str) {
+    pub fn update_message(
+        &mut self,
+        s: ApplicationStatus,
+        descr: &str,
+        status: Option<crate::docker::ContainerStatus>,
+    ) {
         self.deployment_status = s;
         self.deployment_status_description = descr.to_owned();
+        if let Some(_) = status {
+            self.container_status = status;
+        }
     }
 }
 
 impl RabbitMessage<DeploymentMessage> for DeploymentMessage {
     fn build_message(&self) -> Vec<u8> {
         format!(
-            "{}|{}|{}|{}",
+            "{}|{}|{}|{}|{}",
             self.system_identifier,
             self.deployment_id,
             self.deployment_status,
-            self.deployment_status_description
+            self.deployment_status_description,
+            serde_json::to_string(&self.container_status).unwrap()
         )
         .as_bytes()
         .to_vec()
@@ -50,8 +61,12 @@ impl RabbitMessage<DeploymentMessage> for DeploymentMessage {
 
         let mut msg = DeploymentMessage::new(&res[0], &res[1]);
 
-        if res.len() == 4 {
-            msg.update_message(ApplicationStatus::from_str(&res[2]).unwrap(), &res[3]);
+        if res.len() == 5 {
+            msg.update_message(
+                ApplicationStatus::from_str(&res[2]).unwrap(),
+                &res[3],
+                serde_json::from_str(&res[4]).unwrap(),
+            );
         }
 
         (res[0].clone(), msg)
@@ -61,7 +76,7 @@ impl RabbitMessage<DeploymentMessage> for DeploymentMessage {
 #[test]
 fn deploymentmessage_is_invertible() {
     let mut left = DeploymentMessage::new("sysid", "deployid");
-    left.update_message(ApplicationStatus::Running, "deployment is running");
+    left.update_message(ApplicationStatus::Running, "deployment is running", None);
     let data = left.build_message();
 
     let (id, right) = DeploymentMessage::deconstruct_message(&data);

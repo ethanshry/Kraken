@@ -173,7 +173,7 @@ mod test {
     fn db_handles_nodes() {
         let mut db = Database::new();
 
-        let node = Node::new("abcd", "temp", 1, 1, 1, 0.5);
+        let node = Node::new("abcd", "temp", "192.168.0.55");
 
         db.insert_node(&node);
 
@@ -190,11 +190,13 @@ mod test {
         let deployment = Deployment::new(
             "1234",
             "http://url.com",
+            "main",
             "1.0.0",
             "abcd1234",
             ApplicationStatus::Running,
             "localhost:8000/log/1234",
             "localhost:9000",
+            "3000",
             "abcd",
         );
 

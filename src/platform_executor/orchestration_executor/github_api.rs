@@ -1,5 +1,7 @@
 //! Utility for working with the Github API
 
+use async_std::fs::File;
+use b64::FromBase64;
 use log::info;
 use reqwest::header::{CONTENT_TYPE, USER_AGENT};
 use serde::Deserialize;
@@ -63,6 +65,9 @@ pub fn parse_git_url(git_url: &str) -> Option<GitUrl> {
     if url_parts.len() != 3 {
         return None;
     }
+    if !url_parts[0].contains("github.com") {
+        return None;
+    }
     Some(GitUrl {
         user: url_parts[1].to_string(),
         repo: url_parts[2].to_string(),
@@ -107,12 +112,18 @@ pub async fn get_tail_commits_for_repo_branches(user: &str, repo: &str) -> Optio
 /// If the file exists, its FileData will be returned
 /// FileData currently is base64 encoded
 /// If the file does not exist, then None
-pub async fn check_for_file_in_repo(user: &str, repo: &str, file_path: &str) -> Option<FileData> {
+/// # Examples
+/// ```
+/// assert_eq!(check_for_file_in_repo("ethanshry", "Kraken-UI", "shipwreck.toml"), None);
+/// assert_eq!(check_for_file_in_repo("ethanshry", "scapenode", "shipwreck.toml"), Some(_));
+/// ```
+pub async fn check_for_file_in_repo(user: &str, repo: &str, branch_name: &str, file_path: &str) -> Option<String> {
     let url = format!(
-        "https://api.github.com/repos/{owner}/{repo}/contents/{file}",
+        "https://api.github.com/repos/{owner}/{repo}/contents/{file}?ref={branch_name}",
         owner = user,
         repo = repo,
-        file = file_path
+        file = file_path,
+        branch_name = branch_name
     );
 
     info!("Making request to: {}", url);
@@ -131,11 +142,14 @@ pub async fn check_for_file_in_repo(user: &str, repo: &str, file_path: &str) -> 
             let data: Result<FileData, _> = r.json().await;
             match data {
                 Ok(d) => {
-                    // TODO the base64::decode crashes, which isn't great
-                    //let mut out: FileData = d.clone();
-                    //let bytes = base64::decode(&d.content).unwrap();
-                    //out.content = String::from_utf8(bytes).unwrap();
-                    Some(d)
+                    // Shoutout https://stackoverflow.com/questions/40768678/decoding-base64-while-using-github-api-to-download-a-file
+                    // TLDR Github uses MIME (RFC2045) encoding, which the b64 crate handles internally but the base64 crate does not support
+                    let out = d
+                        .content
+                        .from_base64()
+                        .expect("Failed to convert from base64");
+                    let bytes = String::from_utf8(out).unwrap();
+                    Some(bytes)
                 }
                 Err(e) => {
                     info!("Failed to parse JSON: {}", e);
@@ -147,5 +161,59 @@ pub async fn check_for_file_in_repo(user: &str, repo: &str, file_path: &str) -> 
             info!("Error in reqwest to {}: {}", url, e);
             None
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio::runtime::Runtime;
+
+    #[test]
+    fn get_tail_commit_for_branch_from_url_gets_tail_commits() {
+        let nonexistant_branch_commit = Runtime::new()
+            .expect("Failed to create tokio runtime")
+            .block_on(get_tail_commit_for_branch_from_url(
+                "fake-branch",
+                "http://github.com/ethanshry/kraken",
+            ));
+        assert!(nonexistant_branch_commit.is_none());
+        let real_branch = Runtime::new()
+            .expect("Failed to create tokio runtime")
+            .block_on(get_tail_commit_for_branch_from_url(
+                "main",
+                "http://github.com/ethanshry/kraken",
+            ));
+        assert!(real_branch.is_some());
+    }
+
+    #[test]
+    fn parse_git_url_parses_git_urls() {
+        assert!(parse_git_url("http://google.com").is_none());
+        assert!(parse_git_url("http://github.com").is_none());
+        assert!(parse_git_url("http://github.com/ethanshry/kraken").is_some());
+        assert!(parse_git_url("github.com/ethanshry/kraken").is_some());
+    }
+
+    #[test]
+    fn check_for_file_in_repo_can_find_files() {
+        let no_shipwreck_file_repo = Runtime::new()
+            .expect("Failed to create tokio runtime")
+            .block_on(check_for_file_in_repo(
+                "ethanshry",
+                "Kraken-UI",
+                "main",
+                "shipwreck.toml",
+            ));
+        assert!(no_shipwreck_file_repo.is_none());
+        let shipwreck_file_repo = Runtime::new()
+            .expect("Failed to create tokio runtime")
+            .block_on(check_for_file_in_repo(
+                "ethanshry",
+                "scapegoat",
+                "main",
+                "shipwreck.toml",
+            ));
+        assert!(shipwreck_file_repo.is_some());
     }
 }

@@ -58,17 +58,21 @@ pub fn post_graphql_handler(
 }
 
 /// Match to requests for log files
-/// TODO make based on log location parameter
 #[rocket::get("/log/<log_id>", rank = 2)]
 pub fn logs(log_id: &RawStr) -> Result<NamedFile, NotFound<String>> {
     println!(
         "{}",
-        format!("{}/{}/{}.log", env!("CARGO_MANIFEST_DIR"), "log", log_id)
+        format!(
+            "{}/{}/{}.log",
+            env!("CARGO_MANIFEST_DIR"),
+            crate::utils::LOG_LOCATION,
+            log_id
+        )
     );
     NamedFile::open(format!(
         "{}/{}/{}.log",
         env!("CARGO_MANIFEST_DIR"),
-        "log",
+        crate::utils::LOG_LOCATION,
         log_id
     ))
     .map_err(|e| NotFound(e.to_string()))

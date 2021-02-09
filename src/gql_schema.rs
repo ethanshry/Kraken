@@ -23,6 +23,10 @@ impl Node {
         self.model.as_str()
     }
 
+    fn addr(&self) -> &str {
+        self.addr.as_str()
+    }
+
     pub fn uptime(&self) -> i32 {
         self.uptime() as i32
     }
@@ -86,8 +90,28 @@ impl Deployment {
         self.commit.as_str()
     }
 
+    fn port(&self) -> &str {
+        self.port.as_str()
+    }
+
     fn status(&self) -> ApplicationStatus {
         self.status.0.clone()
+    }
+
+    pub fn size(&self) -> i32 {
+        self.size
+    }
+
+    pub fn mem_mb(&self) -> i32 {
+        self.mem_mb
+    }
+
+    pub fn max_mem_mb(&self) -> i32 {
+        self.max_mem_mb
+    }
+
+    pub fn cpu_usage(&self) -> f64 {
+        self.cpu_usage as f64
     }
 
     fn status_history(&self) -> Vec<TemporalApplicationStatus> {
@@ -201,7 +225,7 @@ impl Query {
         for file in crate::file_utils::get_all_files_in_folder(&format!(
             "{}/{}",
             env!("CARGO_MANIFEST_DIR"),
-            "log"
+            crate::utils::LOG_LOCATION
         ))
         .unwrap_or_else(|_| Vec::new())
         {
@@ -223,7 +247,11 @@ pub struct Mutation;
 #[juniper::object(Context = ManagedDatabase)]
 impl Mutation {
     /// Request the platform create a deployment from the specified repository url
-    fn create_deployment(context: &ManagedDatabase, deployment_url: String) -> FieldResult<String> {
+    fn create_deployment(
+        context: &ManagedDatabase,
+        deployment_url: String,
+        git_branch: String,
+    ) -> FieldResult<String> {
         let uuid = Uuid::new_v4().to_hyphenated().to_string();
         context
             .db
@@ -232,9 +260,11 @@ impl Mutation {
             .insert_deployment(&Deployment::new(
                 &uuid,
                 &deployment_url,
+                &git_branch,
                 "",
                 "",
                 ApplicationStatus::DeploymentRequested,
+                "",
                 "",
                 "",
                 "", //&vec![None],
@@ -247,7 +277,7 @@ impl Mutation {
         let mut db = context.db.lock().unwrap();
         match db.get_deployment(&deployment_id) {
             Some(mut d) => {
-                d.update_status(ApplicationStatus::UpdateRequested);
+                d.update_status(&ApplicationStatus::UpdateRequested);
                 db.update_deployment(&deployment_id, &d);
                 Ok(true)
             }
@@ -263,7 +293,7 @@ impl Mutation {
         let mut db = context.db.lock().unwrap();
         match db.get_deployment(&deployment_id) {
             Some(mut d) => {
-                d.update_status(ApplicationStatus::DestructionRequested);
+                d.update_status(&ApplicationStatus::DestructionRequested);
                 db.update_deployment(&deployment_id, &d);
                 Ok(true)
             }

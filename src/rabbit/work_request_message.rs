@@ -41,7 +41,8 @@ pub struct WorkRequestMessage {
     pub request_type: WorkRequestType,
     pub deployment_id: Option<String>, // Only set with WorkRequestType::{RequestDeployment, CancelDeployment}
     pub deployment_url: Option<String>, // Only set with WorkRequestType::RequestDeployment
-    pub priority: Option<i16>,         // Only set with WorkRequestType::SetPromotionPriority
+    pub git_branch: Option<String>,
+    pub priority: Option<i16>, // Only set with WorkRequestType::SetPromotionPriority
 }
 
 impl WorkRequestMessage {
@@ -49,6 +50,7 @@ impl WorkRequestMessage {
         request_type: WorkRequestType,
         deployment_id: Option<&str>,
         deployment_url: Option<&str>,
+        git_branch: Option<&str>,
         priority: Option<i16>,
     ) -> WorkRequestMessage {
         WorkRequestMessage {
@@ -59,6 +61,10 @@ impl WorkRequestMessage {
             },
             deployment_url: match deployment_url {
                 Some(d) => Some(d.to_owned()),
+                None => None,
+            },
+            git_branch: match git_branch {
+                Some(b) => Some(b.to_owned()),
                 None => None,
             },
             priority,
@@ -72,10 +78,11 @@ impl RabbitMessage<WorkRequestMessage> for WorkRequestMessage {
     fn build_message(&self) -> Vec<u8> {
         match self.request_type {
             WorkRequestType::RequestDeployment => format!(
-                "{}|{}|{}",
+                "{}|{}|{}|{}",
                 self.request_type.as_str(),
                 self.deployment_id.as_ref().unwrap(),
-                self.deployment_url.as_ref().unwrap()
+                self.deployment_url.as_ref().unwrap(),
+                self.git_branch.as_ref().unwrap()
             )
             .as_bytes()
             .to_vec(),
@@ -104,16 +111,21 @@ impl RabbitMessage<WorkRequestMessage> for WorkRequestMessage {
         let request_type = WorkRequestType::from_str(&res[0]);
 
         let msg = match request_type {
-            WorkRequestType::RequestDeployment => {
-                WorkRequestMessage::new(request_type, Some(&res[1]), Some(&res[2]), None)
-            }
+            WorkRequestType::RequestDeployment => WorkRequestMessage::new(
+                request_type,
+                Some(&res[1]),
+                Some(&res[2]),
+                Some(&res[3]),
+                None,
+            ),
 
             WorkRequestType::CancelDeployment => {
-                WorkRequestMessage::new(request_type, Some(&res[1]), None, None)
+                WorkRequestMessage::new(request_type, Some(&res[1]), None, None, None)
             }
 
             WorkRequestType::SetPromotionPriority => WorkRequestMessage::new(
                 request_type,
+                None,
                 None,
                 None,
                 Some(res[1].parse::<i16>().unwrap()),
@@ -130,6 +142,7 @@ fn workrequestmessage_is_invertible() {
         WorkRequestType::RequestDeployment,
         Some("deployid"),
         Some("http://github.com"),
+        Some("main"),
         None,
     );
     let data = left.build_message();
