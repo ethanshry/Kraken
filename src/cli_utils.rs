@@ -9,12 +9,9 @@ pub fn get_node_name() -> String {
             .arg("-n")
             .output()
             .expect("err");
-        let mut name = std::str::from_utf8(&res.stdout).expect("err in parse");\
-        if name.ends_with('\n') {
+        let mut name = String::from(std::str::from_utf8(&res.stdout).expect("err in parse"));
+        if name.ends_with('\n') || name.ends_with('\r') {
             name.pop();
-            if name.ends_with('\r') {
-                name.pop();
-            }
         }
         Ok(String::from(name))
     };
