@@ -5,7 +5,7 @@ use crate::{
     platform_executor::orchestration_executor::db::ManagedDatabase,
 }; // Include module from the crate
 
-use juniper::RootNode;
+use juniper::{EmptySubscription, RootNode};
 use rocket::{
     http::RawStr,
     response::status::NotFound,
@@ -17,7 +17,7 @@ use std::path::PathBuf;
 
 // declare the schema, will need to dig into this more
 // Presumably this would use not an Empty Mutation in the future
-pub type Schema = RootNode<'static, Query, Mutation>;
+pub type Schema = RootNode<'static, Query, Mutation, EmptySubscription<ManagedDatabase>>;
 
 /// Redirect no path routes to index.html
 #[rocket::get("/")]
@@ -34,7 +34,7 @@ pub fn ping() -> content::Plain<String> {
 /// Visible graphql editor
 #[rocket::get("/graphiql", rank = 2)]
 pub fn graphiql() -> content::Html<String> {
-    juniper_rocket::graphiql_source("/graphql")
+    juniper_rocket::graphiql_source("/graphql", None)
 }
 
 /// Handle graphql GET requests
@@ -44,7 +44,7 @@ pub fn get_graphql_handler(
     request: juniper_rocket::GraphQLRequest,
     schema: State<'_, Schema>,
 ) -> juniper_rocket::GraphQLResponse {
-    request.execute(&schema, &context)
+    request.execute_sync(&schema, &context)
 }
 
 /// Handle graphql POST requests
@@ -54,7 +54,7 @@ pub fn post_graphql_handler(
     request: juniper_rocket::GraphQLRequest,
     schema: State<'_, Schema>,
 ) -> juniper_rocket::GraphQLResponse {
-    request.execute(&schema, &context)
+    request.execute_sync(&schema, &context)
 }
 
 /// Match to requests for log files

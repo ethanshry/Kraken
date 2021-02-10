@@ -12,6 +12,7 @@ use crate::{
     file_utils::{append_to_file, copy_dir_contents_to_static},
     rabbit::RabbitBroker,
 };
+use juniper::EmptySubscription;
 use log::{info, warn};
 use std::fs;
 use std::process::Command;
@@ -235,7 +236,11 @@ impl OrchestrationExecutor {
         tokio::spawn(async move {
             rocket::ignite()
                 .manage(ManagedDatabase::new(db))
-                .manage(crate::api_routes::Schema::new(Query, Mutation))
+                .manage(crate::api_routes::Schema::new(
+                    Query,
+                    Mutation,
+                    EmptySubscription::<ManagedDatabase>::new(),
+                ))
                 .mount(
                     "/",
                     rocket::routes![

@@ -4,6 +4,9 @@ echo "Installing rust components"
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 sudo apt install cargo -y
 
+sudo apt install libssl-dev
+sodo apt install pkg-config -y
+
 echo "Creating data directories"
 mkdir -p ~/.kraken
 cd ~/.kraken

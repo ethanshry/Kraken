@@ -12,7 +12,7 @@ impl juniper::Context for ManagedDatabase {}
 
 // Specify computed resolvers for GQL type
 // Note only visible resolvers can be here, other properties must be in a different impl block
-#[juniper::object(context = ManagedDatabase)]
+#[graphql_object(context = ManagedDatabase)]
 #[graphql(description = "A physical devide which is a member of the platform")]
 impl Node {
     fn id(&self) -> &str {
@@ -60,7 +60,7 @@ impl Node {
     */
 }
 
-#[juniper::object(context = ManagedDatabase)]
+#[graphql_object(context = ManagedDatabase)]
 #[graphql(description = "A physical devide which is a member of the platform")]
 impl TemporalApplicationStatus {
     fn status(&self) -> ApplicationStatus {
@@ -71,7 +71,7 @@ impl TemporalApplicationStatus {
     }
 }
 
-#[juniper::object(context = ManagedDatabase)]
+#[graphql_object(context = ManagedDatabase)]
 #[graphql(description = "A physical devide which is a member of the platform")]
 impl Deployment {
     fn id(&self) -> &str {
@@ -151,7 +151,7 @@ impl Deployment {
     }
 }
 
-#[juniper::object(context = ManagedDatabase)]
+#[graphql_object(context = ManagedDatabase)]
 #[graphql(description = "A physical devide which is a member of the platform")]
 impl Platform {
     fn deployments(&self) -> Vec<Deployment> {
@@ -170,7 +170,7 @@ impl Platform {
 /// Defines GraphQL Queries
 pub struct Query;
 
-#[juniper::object(Context = ManagedDatabase)]
+#[graphql_object(Context = ManagedDatabase)]
 impl Query {
     /// Get information for a specific deployment on the platform
     fn get_deployment(
@@ -244,7 +244,7 @@ impl Query {
 // Defines GQL Mutations
 pub struct Mutation;
 
-#[juniper::object(Context = ManagedDatabase)]
+#[graphql_object(Context = ManagedDatabase)]
 impl Mutation {
     /// Request the platform create a deployment from the specified repository url
     fn create_deployment(
