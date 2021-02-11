@@ -1,6 +1,5 @@
 //! Utility for working with the Github API
 
-use async_std::fs::File;
 use b64::FromBase64;
 use log::info;
 use reqwest::header::{CONTENT_TYPE, USER_AGENT};
@@ -117,7 +116,12 @@ pub async fn get_tail_commits_for_repo_branches(user: &str, repo: &str) -> Optio
 /// assert_eq!(check_for_file_in_repo("ethanshry", "Kraken-UI", "shipwreck.toml"), None);
 /// assert_eq!(check_for_file_in_repo("ethanshry", "scapenode", "shipwreck.toml"), Some(_));
 /// ```
-pub async fn check_for_file_in_repo(user: &str, repo: &str, branch_name: &str, file_path: &str) -> Option<String> {
+pub async fn check_for_file_in_repo(
+    user: &str,
+    repo: &str,
+    branch_name: &str,
+    file_path: &str,
+) -> Option<String> {
     let url = format!(
         "https://api.github.com/repos/{owner}/{repo}/contents/{file}?ref={branch_name}",
         owner = user,

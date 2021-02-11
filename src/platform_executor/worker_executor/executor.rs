@@ -5,11 +5,13 @@ use super::{
 };
 use crate::docker::DockerBroker;
 use crate::rabbit::{
+    deployment_message::DeploymentMessage,
     log_message::LogMessage,
     work_request_message::{WorkRequestMessage, WorkRequestType},
     QueueLabel, RabbitMessage,
 };
 use async_trait::async_trait;
+use bollard::models::ContainerStateStatusEnum;
 use kraken_utils::file::clear_tmp;
 use log::{info, warn};
 
@@ -130,8 +132,26 @@ impl Executor for WorkerExecutor {
                         msg.send(&publisher, QueueLabel::Log.as_str()).await;
                     }
 
-                    if let Some(stats) = docker.get_container_status(&d.deployment_id).await {
-                        // TODO send stats somewhere
+                    if let Some(status) = docker.get_container_status(&d.deployment_id).await {
+                        let state = match status.state {
+                            bollard::models::ContainerStateStatusEnum::RUNNING => {
+                                crate::gql_model::ApplicationStatus::Running
+                            }
+                            _ => crate::gql_model::ApplicationStatus::Errored,
+                        };
+                        let description = match state {
+                            crate::gql_model::ApplicationStatus::Running => {
+                                String::from("Application status normal")
+                            }
+                            _ => format!(
+                                "Docker reported error in application, state {:?}",
+                                status.state
+                            ),
+                        };
+                        let publisher = node.broker.as_ref().unwrap().get_channel().await;
+                        let mut msg = DeploymentMessage::new(&node.system_id, &d.deployment_id);
+                        msg.update_message(state, &description, Some(status));
+                        msg.send(&publisher, QueueLabel::Deployment.as_str()).await;
                     }
                 }
             }
