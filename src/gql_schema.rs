@@ -222,7 +222,7 @@ impl Query {
     /// Get a list of deployment IDs which have available log files
     pub fn get_available_logs() -> FieldResult<Vec<String>> {
         let mut logs = vec![];
-        for file in crate::file_utils::get_all_files_in_folder(&format!(
+        for file in kraken_utils::file::get_all_files_in_folder(&format!(
             "{}/{}",
             env!("CARGO_MANIFEST_DIR"),
             crate::utils::LOG_LOCATION

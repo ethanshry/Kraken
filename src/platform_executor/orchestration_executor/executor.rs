@@ -2,14 +2,14 @@
 
 use super::{ExecutionFaliure, Executor, GenericNode, OrchestrationExecutor, SetupFaliure, Task};
 use crate::gql_model::{ApplicationStatus, Node};
-use crate::network::get_lan_addr;
 use crate::rabbit::{
     work_request_message::{WorkRequestMessage, WorkRequestType},
     QueueLabel, RabbitMessage,
 };
-use crate::{cli_utils, file_utils::clear_tmp};
 use async_trait::async_trait;
 use futures::future;
+use kraken_utils::file::clear_tmp;
+use kraken_utils::network::get_lan_addr;
 use log::{error, info, warn};
 use std::fs;
 
@@ -26,7 +26,7 @@ impl Executor for OrchestrationExecutor {
             let mut db = arc.lock().unwrap();
             db.insert_node(&Node::new(
                 &node.system_id,
-                &cli_utils::get_node_name(),
+                &kraken_utils::cli::get_node_name(),
                 &lan_addr.unwrap_or_else(|| String::from("127.0.0.1")),
             ));
         }

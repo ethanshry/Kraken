@@ -1,18 +1,16 @@
 //! Defines the Orchestrator role, which manages work for all devices on the platform
 use super::{ExecutionFaliure, Executor, GenericNode, SetupFaliure, Task};
-use crate::git_utils::clone_remote_branch;
 use crate::gql_model::{Deployment, Service, ServiceStatus};
 use crate::gql_schema::{Mutation, Query};
-use crate::network::wait_for_good_healthcheck;
+use crate::rabbit::RabbitBroker;
 use crate::rabbit::{
     deployment_message::DeploymentMessage, log_message::LogMessage,
     sysinfo_message::SysinfoMessage, QueueLabel, RabbitMessage,
 };
-use crate::{
-    file_utils::{append_to_file, copy_dir_contents_to_static},
-    rabbit::RabbitBroker,
-};
 use juniper::EmptySubscription;
+use kraken_utils::file::{append_to_file, copy_dir_contents_to_static};
+use kraken_utils::git::clone_remote_branch;
+use kraken_utils::network::wait_for_good_healthcheck;
 use log::{info, warn};
 use std::fs;
 use std::process::Command;
@@ -157,7 +155,6 @@ impl OrchestrationExecutor {
                 crate::utils::UI_BRANCH_NAME,
                 "tmp/site",
             )
-            .wait()
             .unwrap();
 
             // Build the site

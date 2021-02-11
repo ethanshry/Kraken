@@ -15,14 +15,10 @@
 extern crate juniper;
 
 mod api_routes;
-mod cli_utils;
 mod deployment;
 mod docker;
-mod file_utils;
-mod git_utils;
 mod gql_model;
 mod gql_schema;
-mod network;
 mod platform_executor;
 mod rabbit;
 mod testing;
@@ -35,14 +31,15 @@ use platform_executor::{ExecutionFaliure, Executor, GenericNode, NodeMode};
 async fn main() -> Result<(), ()> {
     dotenv::dotenv().ok();
     env_logger::init();
-    let orchestrator_ip =
-        match &std::env::var("SHOULD_SCAN_NETWORK").unwrap_or_else(|_| "YES".into())[..] {
-            "NO" => {
-                warn!("ENV is configured to skip network scan, this may not be desired behaviour");
-                None
-            }
-            _ => network::find_orchestrator_on_lan().await,
-        };
+    let orchestrator_ip = match &std::env::var("SHOULD_SCAN_NETWORK")
+        .unwrap_or_else(|_| "YES".into())[..]
+    {
+        "NO" => {
+            warn!("ENV is configured to skip network scan, this may not be desired behaviour");
+            None
+        }
+        _ => kraken_utils::network::find_orchestrator_on_lan(crate::utils::ROCKET_PORT_NO).await,
+    };
 
     let node_mode = match &orchestrator_ip {
         Some(_) => {

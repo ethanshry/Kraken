@@ -4,13 +4,13 @@ use super::{
     Task, WorkerExecutor,
 };
 use crate::docker::DockerBroker;
-use crate::file_utils::clear_tmp;
 use crate::rabbit::{
     log_message::LogMessage,
     work_request_message::{WorkRequestMessage, WorkRequestType},
     QueueLabel, RabbitMessage,
 };
 use async_trait::async_trait;
+use kraken_utils::file::clear_tmp;
 use log::{info, warn};
 
 #[async_trait]

@@ -1,14 +1,14 @@
 //! Defines the Worker role, which handles core fucntionality of all devices on the platform
 use super::{DeploymentInfo, ExecutionFaliure, Executor, GenericNode, SetupFaliure, Task};
-use crate::file_utils::{copy_dockerfile_to_dir, get_all_files_in_folder};
-use crate::git_utils::clone_remote_branch;
+use crate::docker::DockerBroker;
 use crate::gql_model::ApplicationStatus;
 use crate::rabbit::sysinfo_message::SysinfoMessage;
 use crate::rabbit::{
     deployment_message::DeploymentMessage, log_message::LogMessage, QueueLabel, RabbitBroker,
     RabbitMessage,
 };
-use crate::{cli_utils, docker::DockerBroker};
+use kraken_utils::file::{copy_dockerfile_to_dir, get_all_files_in_folder};
+use kraken_utils::git::clone_remote_branch;
 use log::{error, info};
 use sysinfo::SystemExt;
 
@@ -47,10 +47,10 @@ impl WorkerExecutor {
             let publisher = broker.get_channel().await;
 
             tokio::spawn(async move {
-                let lan_addr = crate::network::get_lan_addr();
+                let lan_addr = kraken_utils::network::get_lan_addr();
                 let mut msg = SysinfoMessage::new(
                     &system_uuid,
-                    &cli_utils::get_node_name(),
+                    &kraken_utils::cli::get_node_name(),
                     &lan_addr.unwrap_or_else(|| String::from("127.0.0.1")),
                 );
                 loop {
@@ -101,9 +101,7 @@ pub async fn handle_deployment(
     msg.send(&publisher, QueueLabel::Deployment.as_str()).await;
 
     info!("Retrieving git repository for container from {}", git_uri);
-    clone_remote_branch(git_uri, git_branch, tmp_dir_path)
-        .wait()
-        .unwrap();
+    clone_remote_branch(git_uri, git_branch, tmp_dir_path).unwrap();
 
     let mut deployment_info = DeploymentInfo::new(&container_guid, "", false);
 
