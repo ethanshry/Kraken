@@ -36,23 +36,10 @@ pub fn ping() -> content::Plain<String> {
 pub fn health(
     context: State<'_, ManagedDatabase>,
     requester_node_id: &RawStr,
-) -> Result<NamedFile, NotFound<String>> {
-    println!(
-        "{}",
-        format!(
-            "{}/{}/{}.log",
-            env!("CARGO_MANIFEST_DIR"),
-            crate::utils::LOG_LOCATION,
-            requester_node_id
-        )
-    );
-    NamedFile::open(format!(
-        "{}/{}/{}.log",
-        env!("CARGO_MANIFEST_DIR"),
-        crate::utils::LOG_LOCATION,
-        requester_node_id
-    ))
-    .map_err(|e| NotFound(e.to_string()))
+) -> content::Plain<String> {
+    let mut db = context.db.lock().unwrap();
+    let orch_priority = db.get_orchestrator_rank(requester_node_id);
+    content::Plain(format!("{}", orch_priority))
 }
 
 /// Visible graphql editor

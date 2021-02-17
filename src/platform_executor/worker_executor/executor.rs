@@ -11,7 +11,6 @@ use crate::rabbit::{
     QueueLabel, RabbitMessage,
 };
 use async_trait::async_trait;
-use bollard::models::ContainerStateStatusEnum;
 use kraken_utils::file::clear_tmp;
 use log::{info, warn};
 

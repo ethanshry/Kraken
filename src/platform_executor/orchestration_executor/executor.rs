@@ -29,6 +29,7 @@ impl Executor for OrchestrationExecutor {
                 &kraken_utils::cli::get_node_name(),
                 &lan_addr.unwrap_or_else(|| String::from("127.0.0.1")),
                 crate::platform_executor::NodeMode::ORCHESTRATOR,
+                Some(0),
             ));
         }
 

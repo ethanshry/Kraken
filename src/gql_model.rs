@@ -40,6 +40,7 @@ pub struct Node {
     pub model: String,
     pub addr: String,
     pub mode: NodeMode,
+    pub orchestration_priority: Option<u8>,
     uptime: u64,
     ram_free: u64,
     ram_used: u64,
@@ -55,6 +56,7 @@ impl Clone for Node {
             model: self.model.to_owned(),
             addr: self.addr.clone(),
             mode: self.mode.clone(),
+            orchestration_priority: self.orchestration_priority,
             ram_free: self.ram_free,
             ram_used: self.ram_used,
             load_avg_5: self.load_avg_5,
@@ -76,12 +78,19 @@ impl Clone for Node {
 // non-gql impl block for Node
 // TODO rename so this makes more sense (is really node-info or something)
 impl Node {
-    pub fn new(id: &str, model: &str, addr: &str, mode: NodeMode) -> Node {
+    pub fn new(
+        id: &str,
+        model: &str,
+        addr: &str,
+        mode: NodeMode,
+        orchestration_priority: Option<u8>,
+    ) -> Node {
         Node {
             id: id.to_owned(),
             model: model.to_owned(),
             addr: addr.to_owned(),
             mode: mode,
+            orchestration_priority: orchestration_priority,
             uptime: 0,
             ram_free: 0,
             ram_used: 0,
@@ -144,7 +153,8 @@ impl Node {
                 None => "placeholder_model",
             },
             addr,
-            NodeMode::ORCHESTRATOR,
+            NodeMode::ORCHESTRATOR, // TODO figure out how mode is useful
+            None,
         );
         if let Some(u) = uptime {
             n.uptime = u;

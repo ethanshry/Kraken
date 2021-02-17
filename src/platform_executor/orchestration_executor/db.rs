@@ -78,6 +78,31 @@ impl Database {
         }
     }
 
+    pub fn get_orchestrator_rank(&mut self, node_id: &str) -> u8 {
+        if let Some(n) = self.nodes.get(node_id) {
+            let mut n = n.clone();
+            if let Some(p) = n.orchestration_priority {
+                return p;
+            }
+            // node does not have an assigned priority, so figure one out
+            let nodes: Vec<_> = self.nodes.iter().collect();
+            let mut max_priority = 0;
+            for (_, n) in nodes {
+                if let Some(p) = n.orchestration_priority {
+                    if p != 255 && p > max_priority {
+                        max_priority = p;
+                    }
+                }
+            }
+            n.orchestration_priority = Some(max_priority + 1);
+            self.nodes.insert(node_id.to_string(), n);
+            return max_priority + 1;
+        } else {
+            // node is not in DB, so give no priority
+            return 255;
+        }
+    }
+
     pub fn insert_node(&mut self, node: &Node) -> Option<Node> {
         self.nodes.insert(node.id.to_owned(), node.to_owned())
     }
@@ -178,6 +203,7 @@ mod test {
             "temp",
             "192.168.0.55",
             crate::platform_executor::NodeMode::ORCHESTRATOR,
+            None,
         );
 
         db.insert_node(&node);
