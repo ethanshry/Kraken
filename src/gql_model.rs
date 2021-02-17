@@ -1,5 +1,6 @@
 //! Defines the model and resolvers for much of the GraphQL Schema
 
+use crate::platform_executor::NodeMode;
 use serde::{Deserialize, Serialize};
 use std::string::ToString; // for strum enum to string
 use std::time::SystemTime;
@@ -38,6 +39,7 @@ pub struct Node {
     pub id: String,
     pub model: String,
     pub addr: String,
+    pub mode: NodeMode,
     uptime: u64,
     ram_free: u64,
     ram_used: u64,
@@ -52,6 +54,7 @@ impl Clone for Node {
             id: self.id.to_owned(),
             model: self.model.to_owned(),
             addr: self.addr.clone(),
+            mode: self.mode.clone(),
             ram_free: self.ram_free,
             ram_used: self.ram_used,
             load_avg_5: self.load_avg_5,
@@ -73,11 +76,12 @@ impl Clone for Node {
 // non-gql impl block for Node
 // TODO rename so this makes more sense (is really node-info or something)
 impl Node {
-    pub fn new(id: &str, model: &str, addr: &str) -> Node {
+    pub fn new(id: &str, model: &str, addr: &str, mode: NodeMode) -> Node {
         Node {
             id: id.to_owned(),
             model: model.to_owned(),
             addr: addr.to_owned(),
+            mode: mode,
             uptime: 0,
             ram_free: 0,
             ram_used: 0,
@@ -140,6 +144,7 @@ impl Node {
                 None => "placeholder_model",
             },
             addr,
+            NodeMode::ORCHESTRATOR,
         );
         if let Some(u) = uptime {
             n.uptime = u;

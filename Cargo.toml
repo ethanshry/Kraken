@@ -38,3 +38,7 @@ uuid = { version = "0.8", features = ["serde", "v4"] }
 queues = "1.1"
 rand = "0.8"
 kraken-utils = { git = "https://github.com/ethanshry/kraken-utils", branch = "dev" }
+openssl = { version = '0.10', optional = true }
+
+[features]
+vendored-openssl = ["openssl/vendored"]

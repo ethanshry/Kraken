@@ -31,6 +31,30 @@ pub fn ping() -> content::Plain<String> {
     content::Plain("pong".to_string())
 }
 
+/// Match to worker healthcheck requests
+#[rocket::get("/health/<requester_node_id>", rank = 2)]
+pub fn health(
+    context: State<'_, ManagedDatabase>,
+    requester_node_id: &RawStr,
+) -> Result<NamedFile, NotFound<String>> {
+    println!(
+        "{}",
+        format!(
+            "{}/{}/{}.log",
+            env!("CARGO_MANIFEST_DIR"),
+            crate::utils::LOG_LOCATION,
+            requester_node_id
+        )
+    );
+    NamedFile::open(format!(
+        "{}/{}/{}.log",
+        env!("CARGO_MANIFEST_DIR"),
+        crate::utils::LOG_LOCATION,
+        requester_node_id
+    ))
+    .map_err(|e| NotFound(e.to_string()))
+}
+
 /// Visible graphql editor
 #[rocket::get("/graphiql", rank = 2)]
 pub fn graphiql() -> content::Html<String> {

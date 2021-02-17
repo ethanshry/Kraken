@@ -4,11 +4,12 @@ pub mod worker_executor;
 
 use crate::rabbit::RabbitBroker;
 use async_trait::async_trait;
+use serde::{Deserialize, Serialize};
 use std::time::{Duration, SystemTime};
 
 /// The Type of the Kraken node, defines which functions must be created.
 /// A Kraken device might have multiple of these roles
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum NodeMode {
     /// A node only responsible for handling deployments
     WORKER,
