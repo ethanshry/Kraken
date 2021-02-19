@@ -54,25 +54,46 @@ async fn main() -> Result<(), ()> {
 
     let rabbit_addr: String = format!(
         "amqp://{}:5672",
-        orchestrator_ip.unwrap_or_else(|| String::from("localhost"))
+        &orchestrator_ip
+            .clone()
+            .unwrap_or_else(|| String::from("localhost"))
     );
 
     info!("rabbit addr will be {}", rabbit_addr);
 
     let system_uuid = utils::get_system_id();
 
-    let mut node = GenericNode::new(&system_uuid, &rabbit_addr);
+    let mut node = GenericNode::new(
+        &system_uuid,
+        &rabbit_addr,
+        &format!(
+            "{}:{}",
+            &orchestrator_ip
+                .clone()
+                .unwrap_or_else(|| String::from("localhost")),
+            &utils::ROCKET_PORT_NO
+        ),
+    );
     info!("node {} established", system_uuid);
 
-    let mut worker = platform_executor::worker_executor::WorkerExecutor::new();
+    let rollover_priority = match node_mode {
+        NodeMode::ORCHESTRATOR => Some(0),
+        NodeMode::WORKER => {
+            platform_executor::orchestration_executor::get_rollover_priority(
+                &orchestrator_ip.unwrap_or_else(|| String::from("localhost")),
+                &node.system_id,
+            )
+            .await
+        }
+    };
 
-    let mut orchestrator = platform_executor::orchestration_executor::OrchestrationExecutor::new();
+    let mut orchestrator =
+        platform_executor::orchestration_executor::OrchestrationExecutor::new(rollover_priority);
+    let mut worker = platform_executor::worker_executor::WorkerExecutor::new();
 
     if node_mode == NodeMode::ORCHESTRATOR {
         match orchestrator.setup(&mut node).await {
             Ok(_) => {
-                // Now that we have a platform, re-establish the worker
-                worker = platform_executor::worker_executor::WorkerExecutor::new();
                 worker.setup(&mut node).await.unwrap();
             }
             Err(e) => {

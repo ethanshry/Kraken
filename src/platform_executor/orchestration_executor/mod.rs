@@ -12,9 +12,9 @@ use kraken_utils::file::{append_to_file, copy_dir_contents_to_static};
 use kraken_utils::git::clone_remote_branch;
 use kraken_utils::network::wait_for_good_healthcheck;
 use log::{info, warn};
-use std::fs;
 use std::process::Command;
 use std::sync::{Arc, Mutex, MutexGuard};
+use std::{fs, str};
 use tokio::task::JoinHandle;
 
 pub mod db;
@@ -30,6 +30,9 @@ pub struct OrchestrationExecutor {
     api_server: Option<tokio::task::JoinHandle<()>>,
     /// A reference to the Database containing information about the platform
     pub db_ref: Arc<Mutex<Database>>,
+    /// The rank of this executor for rollover. 0 implies this is the active orchestrator, None implies none is assigned.
+    /// Otherwise is treated as lowest number is highest priority
+    pub rollover_priority: Option<u8>,
 }
 
 /// Ensures the deployment has the potential for success
@@ -85,13 +88,57 @@ pub async fn validate_deployment(git_url: &str, git_branch: &str) -> Result<(Str
     }
 }
 
+/// Ensures the deployment has the potential for success
+/// This includes ensuring the url is valid and the shipwreck.toml exists in the repo
+///
+/// # Arguments
+///
+/// * `git_url` - The URL to a github repository containing a shipwreck.toml
+///
+/// # Returns
+///
+/// * Ok((commit_hash, shipwreck.toml data))
+/// * Err(())
+///
+/// # Examples
+/// ```
+/// let url = validate_deployment("http://github.com/Kraken/scapenode", "main")
+/// assert_eq!(url, Ok(_));
+/// ```
+pub async fn get_rollover_priority(orchestrator_ip: &str, system_id: &str) -> Option<u8> {
+    let url = format!(
+        "https://{orchestrator_ip}:{port}/health/{node_id}",
+        orchestrator_ip = orchestrator_ip,
+        port = crate::utils::ROCKET_PORT_NO,
+        node_id = system_id
+    );
+
+    info!("Making request to: {}", url);
+
+    let client = reqwest::Client::new();
+
+    let response = client.get(&url).send().await;
+
+    match response {
+        Ok(r) => match r.text().await {
+            Ok(data) => Some(data.parse::<u8>().unwrap()),
+            Err(e) => {
+                info!("Failed to parse JSON: {}", e);
+                None
+            }
+        },
+        Err(e) => None,
+    }
+}
+
 impl OrchestrationExecutor {
     /// Creates a new Orchestrator Object
-    pub fn new() -> OrchestrationExecutor {
+    pub fn new(rollover_priority: Option<u8>) -> OrchestrationExecutor {
         let db = Database::new();
         OrchestrationExecutor {
             api_server: None,
             db_ref: Arc::new(Mutex::new(db)),
+            rollover_priority: rollover_priority,
         }
     }
 

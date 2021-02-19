@@ -18,6 +18,11 @@ impl Executor for OrchestrationExecutor {
     /// The tasks associated with setting up this role.
     /// Workers are primarilly concerned with connecting to RabbitMQ, and establishing necesarry queues
     async fn setup(&mut self, node: &mut GenericNode) -> Result<(), SetupFaliure> {
+        // If we are not the primary orchestrator, give up
+        if self.rollover_priority != Some(0) {
+            return Ok(());
+        }
+        // We are the primary orchestrator, continue
         // Put DB interaction in block scope
         // This prevents us from needing a `Send` `MutexGuard`
         let lan_addr = get_lan_addr();
@@ -91,7 +96,15 @@ impl Executor for OrchestrationExecutor {
     /// Logic which should be executed every iteration
     /// Primarilly focused on handling deployment/kill/update requests, and processing logs
     async fn execute(&mut self, node: &mut GenericNode) -> Result<(), ExecutionFaliure> {
-        // TODO look for work to distribute and do it
+        // If we are not the primary orchestrator, just make sure the primary orchestrator is good
+        if self.rollover_priority != Some(0) {
+            let priority =
+                super::get_rollover_priority(&node.orchestrator_addr, &node.system_id).await;
+            if priority != self.rollover_priority {
+                // update rollover priority
+            }
+            return Ok(());
+        }
 
         let deployments;
         {

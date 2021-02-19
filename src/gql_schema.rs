@@ -51,13 +51,6 @@ impl Node {
     fn deployments(&self) -> Vec<String> {
         self.deployments.clone()
     }
-
-    // TODO figure out what is going on with this
-    /*
-    fn services(&self, context: &Database) -> Option<&Vec<Service>> {
-        context.get_platform_services()
-    }
-    */
 }
 
 #[graphql_object(context = ManagedDatabase)]
