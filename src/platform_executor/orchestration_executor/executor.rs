@@ -100,10 +100,75 @@ impl Executor for OrchestrationExecutor {
         if self.rollover_priority != Some(0) {
             let priority =
                 super::get_rollover_priority(&node.orchestrator_addr, &node.system_id).await;
-            if priority != self.rollover_priority {
-                // update rollover priority
+            match priority {
+                None => {
+                    // No priority means we have an issue with the orchestration communication
+                    warn!("Initial Orchestration Healthcheck failed, attempting to retry");
+                    let backoff = vec![0, 1, 1, 2, 5];
+                    for time in backoff {
+                        std::thread::sleep(std::time::Duration::from_millis(time * 1000));
+                        match super::get_rollover_priority(&node.orchestrator_addr, &node.system_id)
+                            .await
+                        {
+                            None => {
+                                error!(
+                                    "Rollover candidate cannot communicate with healthcheck API at {}",
+                                    &node.orchestrator_addr
+                                );
+                                error!("Attempting to reestablish communication");
+                            }
+                            Some(_) => {
+                                info!("Orchestration Communication Re-Established after failed healthcheck");
+                                return Ok(());
+                            }
+                        }
+                    }
+                    return Err(ExecutionFaliure::NoOrchestrator);
+                }
+                Some(_) => {
+                    if priority != self.rollover_priority {
+                        // update rollover priority
+                        self.rollover_priority = priority;
+                    }
+                    if self.rollover_priority == Some(1) {
+                        // We are the primary rollover canidate, so we need to be backing up the primary
+                        let database_data = super::get_db_data(&node.orchestrator_addr).await;
+                        let mut log_request_ids = vec![];
+                        if let Some(orch_db) = database_data {
+                            let arc = self.db_ref.clone();
+                            let mut db = arc.lock().unwrap();
+                            db.clear();
+
+                            // Backup the database data in this database
+                            if let Some(deployments) = orch_db.get_deployments() {
+                                for mut d in deployments {
+                                    // We want to clear anything that will be reestablished in the new platform
+                                    d.deployment_url = String::from("");
+                                    d.node = String::from("");
+                                    d.results_url = String::from("");
+                                    log_request_ids.push(d.id.clone());
+                                    db.insert_deployment(&d);
+                                }
+                            }
+
+                            if let Some(nodes) = orch_db.get_nodes() {
+                                for mut n in nodes {
+                                    // We want to clear anything that will be reestablished in the new platform
+                                    n.addr = String::from("");
+                                    n.deployments = vec![];
+                                    n.orchestration_priority = None;
+                                    db.insert_node(&n);
+                                }
+                            }
+                        }
+
+                        for log in log_request_ids {
+                            super::backup_log_file(&node.orchestrator_addr, &log).await;
+                        }
+                    }
+                    return Ok(());
+                }
             }
-            return Ok(());
         }
 
         let deployments;

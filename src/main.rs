@@ -122,6 +122,9 @@ async fn main() -> Result<(), ()> {
                         ExecutionFaliure::BadConsumer => {
                             panic!("Worker could not connect to rabbit")
                         }
+                        ExecutionFaliure::NoOrchestrator => {
+                            panic!("Orch failed setup due to no orch rip")
+                        }
                     },
                 };
                 // An Orchestrator IS a worker, so do worker tasks too
@@ -135,6 +138,9 @@ async fn main() -> Result<(), ()> {
                         ExecutionFaliure::BadConsumer => {
                             panic!("Worker could not connect to rabbit")
                         }
+                        ExecutionFaliure::NoOrchestrator => {
+                            panic!("Orch failed execute due to no orch rip")
+                        }
                     },
                 };
             }
@@ -145,6 +151,35 @@ async fn main() -> Result<(), ()> {
                         panic!("Worker indicated a critical execution faliure")
                     }
                     ExecutionFaliure::BadConsumer => panic!("Worker could not connect to rabbit"),
+                    ExecutionFaliure::NoOrchestrator => {
+                        panic!("Worker failed execute due to no orch rip")
+                    } /*
+                      ExecutionFaliure::NoOrchestrator => {
+                          warn!("Worker could not connect to orchestrator");
+                          let backoff = vec![0, 1, 1, 2, 5];
+                          for time in backoff {
+                              std::thread::sleep(std::time::Duration::from_millis(time * 1000));
+                              match super::get_rollover_priority(
+                                  &node.orchestrator_addr,
+                                  &node.system_id,
+                              )
+                              .await
+                              {
+                                  None => {
+                                      error!(
+                                      "Rollover candidate cannot communicate with healthcheck API at {}",
+                                      &node.orchestrator_addr
+                                  );
+                                      error!("Attempting to reestablish communication");
+                                  }
+                                  Some(_) => {
+                                      info!("Orchestration Communication Re-Established after failed healthcheck");
+                                      return Ok(());
+                                  }
+                              }
+                          }
+                          return Err(ExecutionFaliure::NoOrchestrator);
+                      }*/
                 },
             },
         }

@@ -8,7 +8,7 @@ use crate::rabbit::{
     sysinfo_message::SysinfoMessage, QueueLabel, RabbitMessage,
 };
 use juniper::EmptySubscription;
-use kraken_utils::file::{append_to_file, copy_dir_contents_to_static};
+use kraken_utils::file::{append_to_file, copy_dir_contents_to_static, overwrite_to_file};
 use kraken_utils::git::clone_remote_branch;
 use kraken_utils::network::wait_for_good_healthcheck;
 use log::{info, warn};
@@ -88,23 +88,18 @@ pub async fn validate_deployment(git_url: &str, git_branch: &str) -> Result<(Str
     }
 }
 
-/// Ensures the deployment has the potential for success
-/// This includes ensuring the url is valid and the shipwreck.toml exists in the repo
+/// Attempts to fetch the numeric priority for the specified system in an orchestration faliure
 ///
 /// # Arguments
 ///
-/// * `git_url` - The URL to a github repository containing a shipwreck.toml
+/// * `orchestrator_ip` - The ip of the currently active orchestrator
+/// * `system_id` - The node id which we are trying to request the priority for
 ///
 /// # Returns
 ///
-/// * Ok((commit_hash, shipwreck.toml data))
-/// * Err(())
+/// * Some(u8) - The rollover priority for the specified system_id
+/// * None - No priority indicates there was an issue communicating with the primary orchestrator
 ///
-/// # Examples
-/// ```
-/// let url = validate_deployment("http://github.com/Kraken/scapenode", "main")
-/// assert_eq!(url, Ok(_));
-/// ```
 pub async fn get_rollover_priority(orchestrator_ip: &str, system_id: &str) -> Option<u8> {
     let url = format!(
         "https://{orchestrator_ip}:{port}/health/{node_id}",
@@ -123,11 +118,66 @@ pub async fn get_rollover_priority(orchestrator_ip: &str, system_id: &str) -> Op
         Ok(r) => match r.text().await {
             Ok(data) => Some(data.parse::<u8>().unwrap()),
             Err(e) => {
-                info!("Failed to parse JSON: {}", e);
+                info!("Failed to parse response: {}", e);
                 None
             }
         },
         Err(e) => None,
+    }
+}
+
+pub async fn get_db_data(orchestrator_ip: &str) -> Option<Database> {
+    let url = format!(
+        "https://{orchestrator_ip}:{port}/export/database",
+        orchestrator_ip = orchestrator_ip,
+        port = crate::utils::ROCKET_PORT_NO,
+    );
+
+    info!("Making request to: {}", url);
+
+    let client = reqwest::Client::new();
+
+    let response = client.get(&url).send().await;
+
+    match response {
+        Ok(r) => match r.json::<Database>().await {
+            Ok(data) => Some(data),
+            Err(e) => {
+                info!("Failed to parse JSON to Database: {}", e);
+                None
+            }
+        },
+        Err(e) => None,
+    }
+}
+
+pub async fn backup_log_file(orchestrator_ip: &str, log_id: &str) {
+    let url = format!(
+        "https://{orchestrator_ip}:{port}/log/{log_id}",
+        orchestrator_ip = orchestrator_ip,
+        port = crate::utils::ROCKET_PORT_NO,
+        log_id = log_id
+    );
+
+    info!("Making request to: {}", url);
+
+    let client = reqwest::Client::new();
+
+    let response = client.get(&url).send().await;
+
+    if let Ok(r) = response {
+        match r.text().await {
+            Ok(data) => {
+                // write log to file
+                overwrite_to_file(
+                    &format!("{}/{}.log", crate::utils::LOG_LOCATION, log_id),
+                    &data,
+                );
+            }
+            Err(e) => {
+                info!("Failed to parse logfile response: {}", e);
+            }
+        }
     }
 }
 

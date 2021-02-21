@@ -13,7 +13,7 @@ use rocket::{
     response::{content, Redirect},
     State,
 };
-use std::path::PathBuf;
+use std::{ops::Deref, path::PathBuf};
 
 // declare the schema, will need to dig into this more
 // Presumably this would use not an Empty Mutation in the future
@@ -29,6 +29,13 @@ pub fn root() -> Redirect {
 #[rocket::get("/ping", rank = 2)]
 pub fn ping() -> content::Plain<String> {
     content::Plain("pong".to_string())
+}
+
+/// Match to worker healthcheck requests
+#[rocket::get("/export/database", rank = 2)]
+pub fn export_db(context: State<'_, ManagedDatabase>) -> content::Json<String> {
+    let mut db = context.db.lock().unwrap();
+    content::Json(serde_json::to_string(db.deref()).unwrap())
 }
 
 /// Match to worker healthcheck requests

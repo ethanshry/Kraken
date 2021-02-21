@@ -27,8 +27,9 @@ pub enum SetupFaliure {
 
 // Defines reasons for faliure of the execute task
 pub enum ExecutionFaliure {
-    SigKill,     // Task should be killed after this execution
-    BadConsumer, // Error in accessing consumer or parsing message
+    SigKill,        // Task should be killed after this execution
+    BadConsumer,    // Error in accessing consumer or parsing message
+    NoOrchestrator, // Error in communicating with orchestrator
 }
 
 // Labeled handle to a tokio thread

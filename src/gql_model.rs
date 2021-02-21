@@ -397,7 +397,7 @@ impl Platform {
         }
     }
 
-    // TODO modify to update_instance
+    
     pub fn add_node(&mut self, node: Node) {
         self.nodes.push(node);
     }
@@ -406,7 +406,7 @@ impl Platform {
         // TODO complete
     }
 
-    // TODO modify to update_instance
+    
     pub fn add_deployment(&mut self, deployment: Deployment) {
         self.deployments.push(deployment);
     }

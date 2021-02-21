@@ -4,6 +4,7 @@ use crate::gql_model::{
     ApplicationStatus, Deployment, Node, Orchestrator, OrchestratorInterface, Service,
 };
 use log::{info, warn};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
@@ -21,6 +22,7 @@ impl ManagedDatabase {
 /// The database contains information about the currently running platform.
 /// This is managed on the orchestration nodes only
 /// The processes which need access to the database will contain an Arc to a Mutex for the Database
+#[derive(Serialize, Debug, Deserialize)]
 pub struct Database {
     /// Information about the deployments the orchestrator is managing
     deployments: HashMap<String, Deployment>,
@@ -186,6 +188,17 @@ impl Database {
                 }
             }
         }
+    }
+
+    pub fn clear(&mut self) {
+        self.orchestrator = Orchestrator::new(OrchestratorInterface::new(
+            None,
+            None,
+            ApplicationStatus::Errored,
+        ));
+
+        self.nodes.clear();
+        self.deployments.clear();
     }
 }
 
