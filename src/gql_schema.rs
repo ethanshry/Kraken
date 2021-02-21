@@ -27,6 +27,10 @@ impl Node {
         self.addr.as_str()
     }
 
+    fn orchestration_priority(&self) -> i32 {
+        self.orchestration_priority.unwrap_or(255) as i32
+    }
+
     pub fn uptime(&self) -> i32 {
         self.uptime() as i32
     }

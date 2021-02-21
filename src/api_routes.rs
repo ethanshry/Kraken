@@ -46,6 +46,7 @@ pub fn health(
 ) -> content::Plain<String> {
     let mut db = context.db.lock().unwrap();
     let orch_priority = db.get_orchestrator_rank(requester_node_id);
+    println!("OHM NOHM NOHM NOHM: {}", orch_priority);
     content::Plain(format!("{}", orch_priority))
 }
 

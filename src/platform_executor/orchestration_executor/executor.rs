@@ -97,6 +97,7 @@ impl Executor for OrchestrationExecutor {
     /// Primarilly focused on handling deployment/kill/update requests, and processing logs
     async fn execute(&mut self, node: &mut GenericNode) -> Result<(), ExecutionFaliure> {
         // If we are not the primary orchestrator, just make sure the primary orchestrator is good
+        info!("priority {:?}", self.rollover_priority);
         if self.rollover_priority != Some(0) {
             let priority =
                 super::get_rollover_priority(&node.orchestrator_addr, &node.system_id).await;
@@ -126,6 +127,7 @@ impl Executor for OrchestrationExecutor {
                     return Err(ExecutionFaliure::NoOrchestrator);
                 }
                 Some(_) => {
+                    println!("Doing the priority thing!");
                     if priority != self.rollover_priority {
                         // update rollover priority
                         self.rollover_priority = priority;

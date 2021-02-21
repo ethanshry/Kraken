@@ -100,11 +100,10 @@ pub async fn validate_deployment(git_url: &str, git_branch: &str) -> Result<(Str
 /// * Some(u8) - The rollover priority for the specified system_id
 /// * None - No priority indicates there was an issue communicating with the primary orchestrator
 ///
-pub async fn get_rollover_priority(orchestrator_ip: &str, system_id: &str) -> Option<u8> {
+pub async fn get_rollover_priority(orchestrator_addr: &str, system_id: &str) -> Option<u8> {
     let url = format!(
-        "https://{orchestrator_ip}:{port}/health/{node_id}",
-        orchestrator_ip = orchestrator_ip,
-        port = crate::utils::ROCKET_PORT_NO,
+        "http://{orchestrator_addr}/health/{node_id}",
+        orchestrator_addr = orchestrator_addr,
         node_id = system_id
     );
 
@@ -116,7 +115,10 @@ pub async fn get_rollover_priority(orchestrator_ip: &str, system_id: &str) -> Op
 
     match response {
         Ok(r) => match r.text().await {
-            Ok(data) => Some(data.parse::<u8>().unwrap()),
+            Ok(data) => {
+                println!("NOMNOMNOMONOM: {}", data);
+                Some(data.parse::<u8>().unwrap())
+            }
             Err(e) => {
                 info!("Failed to parse response: {}", e);
                 None
@@ -126,11 +128,10 @@ pub async fn get_rollover_priority(orchestrator_ip: &str, system_id: &str) -> Op
     }
 }
 
-pub async fn get_db_data(orchestrator_ip: &str) -> Option<Database> {
+pub async fn get_db_data(orchestrator_addr: &str) -> Option<Database> {
     let url = format!(
-        "https://{orchestrator_ip}:{port}/export/database",
-        orchestrator_ip = orchestrator_ip,
-        port = crate::utils::ROCKET_PORT_NO,
+        "http://{orchestrator_addr}/export/database",
+        orchestrator_addr = orchestrator_addr,
     );
 
     info!("Making request to: {}", url);
@@ -151,11 +152,10 @@ pub async fn get_db_data(orchestrator_ip: &str) -> Option<Database> {
     }
 }
 
-pub async fn backup_log_file(orchestrator_ip: &str, log_id: &str) {
+pub async fn backup_log_file(orchestrator_addr: &str, log_id: &str) {
     let url = format!(
-        "https://{orchestrator_ip}:{port}/log/{log_id}",
-        orchestrator_ip = orchestrator_ip,
-        port = crate::utils::ROCKET_PORT_NO,
+        "http://{orchestrator_addr}/log/{log_id}",
+        orchestrator_addr = orchestrator_addr,
         log_id = log_id
     );
 
@@ -344,7 +344,9 @@ impl OrchestrationExecutor {
                         crate::api_routes::get_graphql_handler,
                         crate::api_routes::post_graphql_handler,
                         crate::api_routes::site,
-                        crate::api_routes::logs
+                        crate::api_routes::logs,
+                        crate::api_routes::health,
+                        crate::api_routes::export_db
                     ],
                 )
                 .attach(options)
