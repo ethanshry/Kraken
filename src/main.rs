@@ -91,26 +91,63 @@ async fn main() -> Result<(), ()> {
         platform_executor::orchestration_executor::OrchestrationExecutor::new(rollover_priority);
     let mut worker = platform_executor::worker_executor::WorkerExecutor::new();
 
-    if node_mode == NodeMode::ORCHESTRATOR {
-        match orchestrator.setup(&mut node).await {
-            Ok(_) => {
-                worker.setup(&mut node).await.unwrap();
-            }
-            Err(e) => {
-                error!("{:?}", e);
-                panic!(
-                    "Failed to create orchestrator, node cannot attach to or form platform. Exiting."
-                )
-            }
+    match orchestrator.setup(&mut node).await {
+        Ok(_) => {
+            worker.setup(&mut node).await.unwrap();
         }
-    } else {
-        worker.setup(&mut node).await.unwrap();
+        Err(e) => {
+            error!("{:?}", e);
+            panic!(
+                "Failed to create orchestrator, node cannot attach to or form platform. Exiting."
+            )
+        }
     }
-
+    /*
+        if node_mode == NodeMode::ORCHESTRATOR {
+            match orchestrator.setup(&mut node).await {
+                Ok(_) => {
+                    worker.setup(&mut node).await.unwrap();
+                }
+                Err(e) => {
+                    error!("{:?}", e);
+                    panic!(
+                        "Failed to create orchestrator, node cannot attach to or form platform. Exiting."
+                    )
+                }
+            }
+        } else {
+            worker.setup(&mut node).await.unwrap();
+        }
+    */
     // TODO remove for final
     testing::setup_experiment(&mut node, &mut orchestrator).await;
 
     loop {
+        match orchestrator.execute(&mut node).await {
+            Ok(_) => {}
+            Err(faliure) => match faliure {
+                ExecutionFaliure::SigKill => {
+                    panic!("Orchestrator indicated a critical execution faliure")
+                }
+                ExecutionFaliure::BadConsumer => panic!("Worker could not connect to rabbit"),
+                ExecutionFaliure::NoOrchestrator => panic!("Orch failed setup due to no orch rip"),
+            },
+        };
+        // An Orchestrator IS a worker, so do worker tasks too
+        // This may cause problems later due to sharing of Node information? Not sure
+        match worker.execute(&mut node).await {
+            Ok(_) => {}
+            Err(faliure) => match faliure {
+                ExecutionFaliure::SigKill => {
+                    panic!("Worker indicated a critical execution faliure")
+                }
+                ExecutionFaliure::BadConsumer => panic!("Worker could not connect to rabbit"),
+                ExecutionFaliure::NoOrchestrator => {
+                    panic!("Orch failed execute due to no orch rip")
+                }
+            },
+        };
+        /*
         match node_mode {
             NodeMode::ORCHESTRATOR => {
                 match orchestrator.execute(&mut node).await {
@@ -183,6 +220,7 @@ async fn main() -> Result<(), ()> {
                 },
             },
         }
+        */
         std::thread::sleep(std::time::Duration::from_millis(500));
     }
 
