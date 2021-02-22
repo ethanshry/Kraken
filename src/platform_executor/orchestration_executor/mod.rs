@@ -7,7 +7,6 @@ use crate::rabbit::{
     deployment_message::DeploymentMessage, log_message::LogMessage,
     sysinfo_message::SysinfoMessage, QueueLabel, RabbitMessage,
 };
-use juniper::EmptySubscription;
 use kraken_utils::file::{append_to_file, copy_dir_contents_to_static, overwrite_to_file};
 use kraken_utils::git::clone_remote_branch;
 use kraken_utils::network::wait_for_good_healthcheck;
@@ -124,7 +123,7 @@ pub async fn get_rollover_priority(orchestrator_addr: &str, system_id: &str) -> 
                 None
             }
         },
-        Err(e) => None,
+        Err(_) => None,
     }
 }
 
@@ -148,7 +147,7 @@ pub async fn get_db_data(orchestrator_addr: &str) -> Option<Database> {
                 None
             }
         },
-        Err(e) => None,
+        Err(_) => None,
     }
 }
 
@@ -330,11 +329,7 @@ impl OrchestrationExecutor {
         tokio::spawn(async move {
             rocket::ignite()
                 .manage(ManagedDatabase::new(db))
-                .manage(crate::api_routes::Schema::new(
-                    Query,
-                    Mutation,
-                    EmptySubscription::<ManagedDatabase>::new(),
-                ))
+                .manage(crate::api_routes::Schema::new(Query, Mutation))
                 .mount(
                     "/",
                     rocket::routes![

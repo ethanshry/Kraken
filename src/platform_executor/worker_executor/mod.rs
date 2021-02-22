@@ -167,7 +167,11 @@ pub async fn handle_deployment(
 
     msg.send(&publisher, QueueLabel::Deployment.as_str()).await;
 
+    println!("CANNOT SEND RIP US");
+
     let docker = DockerBroker::new().await;
+
+    println!("CANNOT DOCK RIP US");
     if let Some(docker) = docker {
         let res = docker
             .build_image(tmp_dir_path, Some(container_guid.to_string()))

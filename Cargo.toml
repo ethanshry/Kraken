@@ -17,28 +17,29 @@ flate2 = "1.0"
 fs_extra = "1.2.0"
 futures-util = "0.3.5"
 futures = "0.3.4"
-juniper = "0.15"
-juniper_rocket = "0.6"
+juniper = "0.14"
+juniper_rocket = "0.5"
 lapin="1.6"
 log = "0.4"
 pnet = "0.27"
-reqwest = { version = "0.11", features = ["blocking", "json"] }
+reqwest = { version = "0.10", features = ["blocking", "json"] }
 rocket = { version = "0.4", default-features = false }
 rocket_cors = "0.5"
 serde = "1.0"
 serde_json = "1.0"
 strum = "0.20"
 strum_macros = "0.20"
-sysinfo = "0.16"
+sysinfo = "0.15"
 tar = "0.4"
-tokio-amqp = "1.0"
-tokio = { version= "1.2", features=["full"]}
+tokio-amqp = "0.1"
+tokio = { version= "0.2", features=["rt-threaded", "macros"]}
 toml = "0.5"
 uuid = { version = "0.8", features = ["serde", "v4"] }
 queues = "1.1"
-rand = "0.8"
+rand = "0.7"
 kraken-utils = { git = "https://github.com/ethanshry/kraken-utils", branch = "dev" }
 openssl = { version = '0.10', optional = true }
+
 
 [features]
 vendored-openssl = ["openssl/vendored"]
