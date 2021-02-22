@@ -42,6 +42,8 @@ impl Executor for OrchestrationExecutor {
         clear_tmp();
         fs::create_dir_all(crate::utils::LOG_LOCATION).unwrap();
 
+        fs::create_dir_all("static").unwrap();
+
         // setup rabbitmq and UI
         let ui = OrchestrationExecutor::fetch_ui(self.db_ref.clone());
         let rabbit = OrchestrationExecutor::deploy_rabbit_instance(self.db_ref.clone(), &node);
