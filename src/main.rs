@@ -25,7 +25,28 @@ mod testing;
 mod utils;
 
 use log::{error, info, warn};
-use platform_executor::{ExecutionFaliure, Executor, GenericNode, NodeMode};
+use platform_executor::{
+    orchestration_executor::OrchestrationExecutor, worker_executor::WorkerExecutor,
+    ExecutionFaliure, Executor, GenericNode, NodeMode,
+};
+
+async fn setup_system(
+    node: &mut GenericNode,
+    orchestrator: &mut OrchestrationExecutor,
+    worker: &mut WorkerExecutor,
+) {
+    match orchestrator.setup(node).await {
+        Ok(_) => {
+            worker.setup(node).await.unwrap();
+        }
+        Err(e) => {
+            error!("{:?}", e);
+            panic!(
+                "Failed to create orchestrator, node cannot attach to or form platform. Exiting."
+            )
+        }
+    }
+}
 
 #[tokio::main]
 async fn main() -> Result<(), ()> {
@@ -90,7 +111,8 @@ async fn main() -> Result<(), ()> {
     let mut orchestrator =
         platform_executor::orchestration_executor::OrchestrationExecutor::new(rollover_priority);
     let mut worker = platform_executor::worker_executor::WorkerExecutor::new();
-
+    setup_system(&mut node, &mut orchestrator, &mut worker).await;
+    /*
     match orchestrator.setup(&mut node).await {
         Ok(_) => {
             worker.setup(&mut node).await.unwrap();
@@ -102,6 +124,7 @@ async fn main() -> Result<(), ()> {
             )
         }
     }
+    */
     /*
         if node_mode == NodeMode::ORCHESTRATOR {
             match orchestrator.setup(&mut node).await {
@@ -127,10 +150,53 @@ async fn main() -> Result<(), ()> {
             Ok(_) => {}
             Err(faliure) => match faliure {
                 ExecutionFaliure::SigKill => {
-                    panic!("Orchestrator indicated a critical execution faliure")
+                    panic!("Orchestrator indicated a critical execution faliure, exiting")
                 }
                 ExecutionFaliure::BadConsumer => panic!("Worker could not connect to rabbit"),
-                ExecutionFaliure::NoOrchestrator => panic!("Orch failed setup due to no orch rip"),
+                ExecutionFaliure::NoOrchestrator => {
+                    // Orchestrator could not be found
+                    // If we are here, we are beyond trying to re-connect
+                    warn!("Orchestrator lost");
+                    if Some(1) == orchestrator.rollover_priority {
+                        // We are the primary backup, so establish ourselves as the orchestrator
+                        orchestrator.rollover_priority = Some(0);
+                        node.rabbit_addr = String::from("amqp://localhost:5672");
+                        node.orchestrator_addr = format!("localhost:{}", &utils::ROCKET_PORT_NO);
+
+                        // re-setup the systems
+                        setup_system(&mut node, &mut orchestrator, &mut worker).await;
+                    } else {
+                        // We are not the primary orchestrator, so just chill and wait to find an orchestrator again
+                        crate::platform_executor::worker_executor::clear_deployments(&mut node)
+                            .await;
+                        let backoff = vec![0, 1, 1, 2, 3, 5, 8, 13, 21, 34, 55];
+                        for time in &backoff {
+                            std::thread::sleep(std::time::Duration::from_millis(time * 1000));
+                            match kraken_utils::network::find_orchestrator_on_lan(
+                                crate::utils::ROCKET_PORT_NO,
+                            )
+                            .await
+                            {
+                                None => {
+                                    if *time == *(backoff.last().clone().unwrap_or(&55)) {
+                                        // We have failed to find an orchestrator
+                                        error!("Failed to find a new orchestrator");
+                                        panic!("No orchestrator, exiting");
+                                    }
+                                }
+                                Some(_) => {
+                                    orchestrator.rollover_priority = Some(0);
+                                    node.rabbit_addr = String::from("amqp://localhost:5672");
+                                    node.orchestrator_addr =
+                                        format!("localhost:{}", &utils::ROCKET_PORT_NO);
+
+                                    // re-setup the systems
+                                    setup_system(&mut node, &mut orchestrator, &mut worker).await;
+                                }
+                            }
+                        }
+                    }
+                }
             },
         };
         // An Orchestrator IS a worker, so do worker tasks too
@@ -142,9 +208,9 @@ async fn main() -> Result<(), ()> {
                     panic!("Worker indicated a critical execution faliure")
                 }
                 ExecutionFaliure::BadConsumer => panic!("Worker could not connect to rabbit"),
-                ExecutionFaliure::NoOrchestrator => {
-                    panic!("Orch failed execute due to no orch rip")
-                }
+                ExecutionFaliure::NoOrchestrator => panic!(
+                    "Worker failed execute due to lack of orchestrator, this should never occur"
+                ),
             },
         };
         /*

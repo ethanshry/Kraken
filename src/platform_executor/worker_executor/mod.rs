@@ -70,6 +70,18 @@ impl WorkerExecutor {
     }
 }
 
+pub async fn clear_deployments(node: &mut GenericNode) {
+    for d in &node.deployments {
+        kill_deployment(
+            &node.system_id,
+            node.broker.as_ref().unwrap(),
+            &d.deployment_id,
+        )
+        .await;
+    }
+    node.deployments = std::collections::LinkedList::new();
+}
+
 /// Deploys an application instance via docker
 pub async fn handle_deployment(
     system_id: &str,

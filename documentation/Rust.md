@@ -24,3 +24,17 @@ if let Some(orch_db) = database_data {
 }
 
 ```
+
+```rust
+
+// this thing
+
+ None => {
+    if *time == *(backoff.last().clone().unwrap_or(&55)) {
+        // We have failed to find an orchestrator
+        error!("Failed to find a new orchestrator");
+        panic!("No orchestrator, exiting");
+    }
+}
+
+```
