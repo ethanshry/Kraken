@@ -112,37 +112,8 @@ async fn main() -> Result<(), ()> {
         platform_executor::orchestration_executor::OrchestrationExecutor::new(rollover_priority);
     let mut worker = platform_executor::worker_executor::WorkerExecutor::new();
     setup_system(&mut node, &mut orchestrator, &mut worker).await;
-    /*
-    match orchestrator.setup(&mut node).await {
-        Ok(_) => {
-            worker.setup(&mut node).await.unwrap();
-        }
-        Err(e) => {
-            error!("{:?}", e);
-            panic!(
-                "Failed to create orchestrator, node cannot attach to or form platform. Exiting."
-            )
-        }
-    }
-    */
-    /*
-        if node_mode == NodeMode::ORCHESTRATOR {
-            match orchestrator.setup(&mut node).await {
-                Ok(_) => {
-                    worker.setup(&mut node).await.unwrap();
-                }
-                Err(e) => {
-                    error!("{:?}", e);
-                    panic!(
-                        "Failed to create orchestrator, node cannot attach to or form platform. Exiting."
-                    )
-                }
-            }
-        } else {
-            worker.setup(&mut node).await.unwrap();
-        }
-    */
-    // TODO remove for final
+
+    // Allows easy injection of a baseline configuration for the orchestrator
     testing::setup_experiment(&mut node, &mut orchestrator).await;
 
     loop {
@@ -157,6 +128,8 @@ async fn main() -> Result<(), ()> {
                     // Orchestrator could not be found
                     // If we are here, we are beyond trying to re-connect
                     warn!("Orchestrator lost");
+                    // If we lose the orchestrator, get rid of existing delployments
+                    crate::platform_executor::worker_executor::clear_deployments(&mut node).await;
                     if Some(1) == orchestrator.rollover_priority {
                         // We are the primary backup, so establish ourselves as the orchestrator
                         orchestrator.rollover_priority = Some(0);
@@ -167,8 +140,6 @@ async fn main() -> Result<(), ()> {
                         setup_system(&mut node, &mut orchestrator, &mut worker).await;
                     } else {
                         // We are not the primary orchestrator, so just chill and wait to find an orchestrator again
-                        crate::platform_executor::worker_executor::clear_deployments(&mut node)
-                            .await;
                         let backoff = vec![0, 1, 1, 2, 3, 5, 8, 13, 21, 34, 55];
                         for time in &backoff {
                             std::thread::sleep(std::time::Duration::from_millis(time * 1000));
@@ -213,80 +184,6 @@ async fn main() -> Result<(), ()> {
                 ),
             },
         };
-        /*
-        match node_mode {
-            NodeMode::ORCHESTRATOR => {
-                match orchestrator.execute(&mut node).await {
-                    Ok(_) => {}
-                    Err(faliure) => match faliure {
-                        ExecutionFaliure::SigKill => {
-                            panic!("Orchestrator indicated a critical execution faliure")
-                        }
-                        ExecutionFaliure::BadConsumer => {
-                            panic!("Worker could not connect to rabbit")
-                        }
-                        ExecutionFaliure::NoOrchestrator => {
-                            panic!("Orch failed setup due to no orch rip")
-                        }
-                    },
-                };
-                // An Orchestrator IS a worker, so do worker tasks too
-                // This may cause problems later due to sharing of Node information? Not sure
-                match worker.execute(&mut node).await {
-                    Ok(_) => {}
-                    Err(faliure) => match faliure {
-                        ExecutionFaliure::SigKill => {
-                            panic!("Worker indicated a critical execution faliure")
-                        }
-                        ExecutionFaliure::BadConsumer => {
-                            panic!("Worker could not connect to rabbit")
-                        }
-                        ExecutionFaliure::NoOrchestrator => {
-                            panic!("Orch failed execute due to no orch rip")
-                        }
-                    },
-                };
-            }
-            NodeMode::WORKER => match worker.execute(&mut node).await {
-                Ok(_) => {}
-                Err(faliure) => match faliure {
-                    ExecutionFaliure::SigKill => {
-                        panic!("Worker indicated a critical execution faliure")
-                    }
-                    ExecutionFaliure::BadConsumer => panic!("Worker could not connect to rabbit"),
-                    ExecutionFaliure::NoOrchestrator => {
-                        panic!("Worker failed execute due to no orch rip")
-                    } /*
-                      ExecutionFaliure::NoOrchestrator => {
-                          warn!("Worker could not connect to orchestrator");
-                          let backoff = vec![0, 1, 1, 2, 5];
-                          for time in backoff {
-                              std::thread::sleep(std::time::Duration::from_millis(time * 1000));
-                              match super::get_rollover_priority(
-                                  &node.orchestrator_addr,
-                                  &node.system_id,
-                              )
-                              .await
-                              {
-                                  None => {
-                                      error!(
-                                      "Rollover candidate cannot communicate with healthcheck API at {}",
-                                      &node.orchestrator_addr
-                                  );
-                                      error!("Attempting to reestablish communication");
-                                  }
-                                  Some(_) => {
-                                      info!("Orchestration Communication Re-Established after failed healthcheck");
-                                      return Ok(());
-                                  }
-                              }
-                          }
-                          return Err(ExecutionFaliure::NoOrchestrator);
-                      }*/
-                },
-            },
-        }
-        */
         std::thread::sleep(std::time::Duration::from_millis(500));
     }
 

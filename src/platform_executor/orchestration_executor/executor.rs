@@ -18,6 +18,7 @@ impl Executor for OrchestrationExecutor {
     /// The tasks associated with setting up this role.
     /// Workers are primarilly concerned with connecting to RabbitMQ, and establishing necesarry queues
     async fn setup(&mut self, node: &mut GenericNode) -> Result<(), SetupFaliure> {
+        OrchestrationExecutor::clean_docker().await;
         // If we are not the primary orchestrator, give up
         if self.rollover_priority != Some(0) {
             return Ok(());
@@ -154,6 +155,10 @@ impl Executor for OrchestrationExecutor {
                                     d.node = String::from("");
                                     d.results_url = String::from("");
                                     log_request_ids.push(d.id.clone());
+                                    // If the application is running, we want to try to re-establish it
+                                    if let (ApplicationStatus::Running, _) = d.status {
+                                        d.update_status(&ApplicationStatus::DeploymentRequested);
+                                    }
                                     db.insert_deployment(&d);
                                 }
                             }
@@ -167,12 +172,10 @@ impl Executor for OrchestrationExecutor {
                                     db.insert_node(&n);
                                 }
                             }
-                            info!("Database Backed up! {:?}", db);
                         }
 
                         for log in log_request_ids {
                             super::backup_log_file(&node.orchestrator_addr, &log).await;
-                            info!("Backing up log {}", log);
                         }
                     }
                     return Ok(());

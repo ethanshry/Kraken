@@ -110,7 +110,7 @@ impl Executor for WorkerExecutor {
             None => return Err(ExecutionFaliure::BadConsumer),
         }
 
-        let mut nodes_to_remove = vec![];
+        let mut deployments_to_remove = vec![];
         for (index, d) in node.deployments.iter_mut().enumerate() {
             // if more than a second has passed, check for logs and get updated deployment status
             if d.last_log_time
@@ -156,13 +156,13 @@ impl Executor for WorkerExecutor {
             }
 
             if d.status.is_err() {
-                nodes_to_remove.push(index);
+                deployments_to_remove.push(index);
             }
         }
 
-        nodes_to_remove.reverse();
+        deployments_to_remove.reverse();
 
-        for index in nodes_to_remove.iter() {
+        for index in deployments_to_remove.iter() {
             let mut split_list = node.deployments.split_off(*index);
             split_list.pop_front();
             node.deployments.append(&mut split_list);

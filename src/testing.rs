@@ -1,4 +1,4 @@
-//! Module specifically to setup the platform to run tests
+//! Module specifically to provide baseline configuration the platform, typically used to perform testing
 
 use crate::platform_executor::orchestration_executor::OrchestrationExecutor;
 use crate::platform_executor::GenericNode;

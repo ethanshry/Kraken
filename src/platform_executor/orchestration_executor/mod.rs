@@ -253,6 +253,15 @@ impl OrchestrationExecutor {
             )
             .unwrap();
 
+            // Inject github token to site
+            kraken_utils::file::append_to_file(
+                "tmp/site/.env",
+                &format!(
+                    "AUTH={}",
+                    std::env::var("GITHUB_TOKEN").unwrap_or(String::from("undefined"))
+                ),
+            );
+
             // Build the site
             info!("Compiling Kraken-UI");
             std::process::Command::new("npm")
@@ -269,6 +278,19 @@ impl OrchestrationExecutor {
         }
 
         info!("Kraken-UI is now available at commit SHA: {}", sha);
+    }
+
+    /// Cleans up all running docker containers
+    ///
+    /// # Arguments
+    ///
+    /// * `node` - A GenericNode containing information about the platform
+    /// * `o` - An OrchestrationExecutor with a reference to the database
+    pub async fn clean_docker() {
+        match Command::new("make").arg("cleanup").output() {
+            Ok(_) => info!("System has sucesfully cleaned up all docker images"),
+            Err(_) => warn!("System failed to clean up docker images. Usually this means there was nothing to clean up")
+        };
     }
 
     /// Deploys a new RabbitMQ instance to the local machine
