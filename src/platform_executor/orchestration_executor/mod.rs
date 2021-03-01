@@ -114,10 +114,7 @@ pub async fn get_rollover_priority(orchestrator_addr: &str, system_id: &str) -> 
 
     match response {
         Ok(r) => match r.text().await {
-            Ok(data) => {
-                println!("NOMNOMNOMONOM: {}", data);
-                Some(data.parse::<u8>().unwrap())
-            }
+            Ok(data) => Some(data.parse::<u8>().unwrap()),
             Err(e) => {
                 info!("Failed to parse response: {}", e);
                 None
