@@ -13,8 +13,8 @@ cargoclean:
 
 build-pi:
 	#OPENSSL_DIR=/home/ethanshry/pi/ssl-install/openssl cargo build --release --target armv7-unknown-linux-gnueabihf
-	cargo build --release --target aarch64-unknown-linux-gnu --features vendored-openssl
-	echo "build result can be found at ./target/aarch64-unknown-linux-gnu/debug/Kraken"
+	cargo build --release --target armv7-unknown-linux-gnueabihf --features vendored-openssl
+	echo "build result can be found at ./target/armv7-unknown-linux-gnueabihf/debug/Kraken"
 
 spinup-rabbit:
 	docker run -d --hostname rabbitmq.service.dev -p 5672:5672 -p 15672:15672 rabbitmq:3-management

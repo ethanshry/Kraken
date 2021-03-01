@@ -434,7 +434,7 @@ impl DockerBroker {
         self.conn
             .stop_container(container_id, Some(StopContainerOptions { t: 10 }))
             .await
-            .unwrap();
+            .unwrap_or_else(|_| {});
         info!("Killing docker container {}", container_id);
     }
 
