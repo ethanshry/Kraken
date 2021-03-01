@@ -2,8 +2,11 @@
 
 use crate::platform_executor::NodeMode;
 use serde::{Deserialize, Serialize};
-use std::string::ToString; // for strum enum to string
 use std::time::SystemTime;
+use std::{
+    string::ToString,
+    time::{Duration, UNIX_EPOCH},
+}; // for strum enum to string
 use strum_macros::{Display, EnumString};
 
 #[derive(Serialize, Debug, Deserialize, Clone, PartialEq, juniper::GraphQLEnum)]
@@ -47,6 +50,7 @@ pub struct Node {
     load_avg_5: f32,
     pub deployments: Vec<String>,
     services: Vec<Service>,
+    pub update_time: u64,
 }
 
 impl Clone for Node {
@@ -63,6 +67,7 @@ impl Clone for Node {
             uptime: self.uptime,
             deployments: Vec::new(),
             services: Vec::new(),
+            update_time: self.update_time,
         };
         for service in self.services.iter() {
             node.services.push(service.clone());
@@ -97,6 +102,10 @@ impl Node {
             load_avg_5: 0.0,
             deployments: vec![],
             services: vec![],
+            update_time: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_else(|_| Duration::new(0, 0))
+                .as_secs(),
         }
     }
 
@@ -126,6 +135,10 @@ impl Node {
 
     /// update the node values
     pub fn update(&mut self, ram_free: u64, ram_used: u64, uptime: u64, load_avg_5: f32) {
+        self.update_time = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_else(|_| Duration::new(0, 0))
+            .as_secs();
         self.ram_free = ram_free;
         self.ram_used = ram_used;
         self.uptime = uptime;
@@ -397,7 +410,6 @@ impl Platform {
         }
     }
 
-    
     pub fn add_node(&mut self, node: Node) {
         self.nodes.push(node);
     }
@@ -406,7 +418,6 @@ impl Platform {
         // TODO complete
     }
 
-    
     pub fn add_deployment(&mut self, deployment: Deployment) {
         self.deployments.push(deployment);
     }

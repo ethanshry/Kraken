@@ -52,6 +52,10 @@ impl Node {
         self.current_ram_percent()
     }
 
+    pub fn update_time(&self) -> i32 {
+        self.update_time as i32
+    }
+
     fn deployments(&self) -> Vec<String> {
         self.deployments.clone()
     }
@@ -297,6 +301,22 @@ impl Mutation {
             None => Err(FieldError::new(
                 "No Active Deployment with the specified id",
                 juniper::graphql_value!({"internal_error": "no_deployment_id"}),
+            )),
+        }
+    }
+
+    /// Request the platform terminate the specified deployment
+    fn delete_log(context: &ManagedDatabase, log_id: String) -> FieldResult<bool> {
+        match std::fs::remove_file(&format!(
+            "{}/{}/{}.log",
+            env!("CARGO_MANIFEST_DIR"),
+            crate::utils::LOG_LOCATION,
+            log_id
+        )) {
+            Ok(_) => Ok(true),
+            Err(_) => Err(FieldError::new(
+                "No existing log with the specified id",
+                juniper::graphql_value!({"internal_error": "no_log_for_id"}),
             )),
         }
     }

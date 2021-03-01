@@ -12,6 +12,7 @@ use kraken_utils::file::clear_tmp;
 use kraken_utils::network::get_lan_addr;
 use log::{error, info, warn};
 use std::fs;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 #[async_trait]
 impl Executor for OrchestrationExecutor {
@@ -338,6 +339,45 @@ impl Executor for OrchestrationExecutor {
                         msg.send(&publisher, &deployment.node).await;
                     }
                     _ => {}
+                }
+            }
+        }
+        let nodes;
+        {
+            // Look through deployments for new deployments which need to be scheduled
+            let arc = self.db_ref.clone();
+            let db = arc.lock().unwrap();
+            nodes = db.get_nodes();
+        }
+        if let Some(ns) = nodes {
+            for n in ns {
+                if SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap_or_else(|_| Duration::new(0, 0))
+                    .as_secs()
+                    - n.update_time
+                    > 60
+                {
+                    // We haven't heard from this node in the last 60 seconds, assume it is dead
+                    // All we need to do is ask the node to spin down deployments, mark them for redeployment, and delete the node from the db
+                    {
+                        // Look through deployments for new deployments which need to be scheduled
+                        let arc = self.db_ref.clone();
+                        let mut db = arc.lock().unwrap();
+                        db.delete_node(&n.id);
+                    }
+                    // we will try to tell the node to spin down its deployments as a courtesy
+                    for d in node.deployments.iter() {
+                        let msg = WorkRequestMessage::new(
+                            WorkRequestType::CancelDeployment,
+                            Some(&d.deployment_id),
+                            None,
+                            None,
+                            None,
+                        );
+                        let publisher = node.broker.as_ref().unwrap().get_channel().await;
+                        msg.send(&publisher, &n.id).await;
+                    }
                 }
             }
         }
