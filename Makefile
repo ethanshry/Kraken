@@ -30,3 +30,9 @@ cleanup:
 reboot:
 	make cleanup
 	cargo run
+
+stop-env-commit:
+	git update-index --assume-unchanged .env
+
+start-env-commit:
+	git update-index --no-assume-unchanged .env
