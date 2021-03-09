@@ -4,6 +4,7 @@ use crate::gql_model::{
     ApplicationStatus, Deployment, Node, Orchestrator, OrchestratorInterface, Service,
 };
 use log::{info, warn};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
@@ -21,6 +22,7 @@ impl ManagedDatabase {
 /// The database contains information about the currently running platform.
 /// This is managed on the orchestration nodes only
 /// The processes which need access to the database will contain an Arc to a Mutex for the Database
+#[derive(Serialize, Debug, Deserialize)]
 pub struct Database {
     /// Information about the deployments the orchestrator is managing
     deployments: HashMap<String, Deployment>,
@@ -75,6 +77,31 @@ impl Database {
         match self.nodes.get(node_id) {
             Some(n) => Some(n.clone()),
             None => None,
+        }
+    }
+
+    pub fn get_orchestrator_rank(&mut self, node_id: &str) -> u8 {
+        if let Some(n) = self.nodes.get(node_id) {
+            let mut n = n.clone();
+            if let Some(p) = n.orchestration_priority {
+                return p;
+            }
+            // node does not have an assigned priority, so figure one out
+            let nodes: Vec<_> = self.nodes.iter().collect();
+            let mut max_priority = 0;
+            for (_, n) in nodes {
+                if let Some(p) = n.orchestration_priority {
+                    if p != 255 && p > max_priority {
+                        max_priority = p;
+                    }
+                }
+            }
+            n.orchestration_priority = Some(max_priority + 1);
+            self.nodes.insert(node_id.to_string(), n);
+            return max_priority + 1;
+        } else {
+            // node is not in DB, so give no priority
+            return 255;
         }
     }
 
@@ -162,6 +189,34 @@ impl Database {
             }
         }
     }
+
+    /// Deletes the specified node and marks all its owned deployments for re-deploy
+    pub fn delete_node(&mut self, node_id: &str) -> Option<Node> {
+        if let Some(_) = self.get_node(node_id) {
+            if let Some(ds) = self.get_deployments() {
+                for mut d in ds {
+                    if d.node == node_id {
+                        d.node = String::from("");
+                        d.update_status(&ApplicationStatus::DeploymentRequested);
+                        self.update_deployment(&d.id, &d);
+                    }
+                }
+            }
+            return self.nodes.remove(node_id);
+        }
+        None
+    }
+
+    pub fn clear(&mut self) {
+        self.orchestrator = Orchestrator::new(OrchestratorInterface::new(
+            None,
+            None,
+            ApplicationStatus::Errored,
+        ));
+
+        self.nodes.clear();
+        self.deployments.clear();
+    }
 }
 
 #[cfg(test)]
@@ -173,7 +228,13 @@ mod test {
     fn db_handles_nodes() {
         let mut db = Database::new();
 
-        let node = Node::new("abcd", "temp", "192.168.0.55");
+        let node = Node::new(
+            "abcd",
+            "temp",
+            "192.168.0.55",
+            crate::platform_executor::NodeMode::ORCHESTRATOR,
+            None,
+        );
 
         db.insert_node(&node);
 

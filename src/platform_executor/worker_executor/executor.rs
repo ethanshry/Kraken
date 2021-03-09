@@ -4,13 +4,14 @@ use super::{
     Task, WorkerExecutor,
 };
 use crate::docker::DockerBroker;
-use crate::file_utils::clear_tmp;
 use crate::rabbit::{
+    deployment_message::DeploymentMessage,
     log_message::LogMessage,
     work_request_message::{WorkRequestMessage, WorkRequestType},
     QueueLabel, RabbitMessage,
 };
 use async_trait::async_trait;
+use kraken_utils::file::clear_tmp;
 use log::{info, warn};
 
 #[async_trait]
@@ -109,7 +110,7 @@ impl Executor for WorkerExecutor {
             None => return Err(ExecutionFaliure::BadConsumer),
         }
 
-        let mut nodes_to_remove = vec![];
+        let mut deployments_to_remove = vec![];
         for (index, d) in node.deployments.iter_mut().enumerate() {
             // if more than a second has passed, check for logs and get updated deployment status
             if d.last_log_time
@@ -130,20 +131,38 @@ impl Executor for WorkerExecutor {
                         msg.send(&publisher, QueueLabel::Log.as_str()).await;
                     }
 
-                    if let Some(stats) = docker.get_container_status(&d.deployment_id).await {
-                        // TODO send stats somewhere
+                    if let Some(status) = docker.get_container_status(&d.deployment_id).await {
+                        let state = match status.state {
+                            bollard::models::ContainerStateStatusEnum::RUNNING => {
+                                crate::gql_model::ApplicationStatus::Running
+                            }
+                            _ => crate::gql_model::ApplicationStatus::Errored,
+                        };
+                        let description = match state {
+                            crate::gql_model::ApplicationStatus::Running => {
+                                String::from("Application status normal")
+                            }
+                            _ => format!(
+                                "Docker reported error in application, state {:?}",
+                                status.state
+                            ),
+                        };
+                        let publisher = node.broker.as_ref().unwrap().get_channel().await;
+                        let mut msg = DeploymentMessage::new(&node.system_id, &d.deployment_id);
+                        msg.update_message(state, &description, Some(status));
+                        msg.send(&publisher, QueueLabel::Deployment.as_str()).await;
                     }
                 }
             }
 
             if d.status.is_err() {
-                nodes_to_remove.push(index);
+                deployments_to_remove.push(index);
             }
         }
 
-        nodes_to_remove.reverse();
+        deployments_to_remove.reverse();
 
-        for index in nodes_to_remove.iter() {
+        for index in deployments_to_remove.iter() {
             let mut split_list = node.deployments.split_off(*index);
             split_list.pop_front();
             node.deployments.append(&mut split_list);

@@ -4,11 +4,12 @@ pub mod worker_executor;
 
 use crate::rabbit::RabbitBroker;
 use async_trait::async_trait;
+use serde::{Deserialize, Serialize};
 use std::time::{Duration, SystemTime};
 
 /// The Type of the Kraken node, defines which functions must be created.
 /// A Kraken device might have multiple of these roles
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum NodeMode {
     /// A node only responsible for handling deployments
     WORKER,
@@ -26,8 +27,9 @@ pub enum SetupFaliure {
 
 // Defines reasons for faliure of the execute task
 pub enum ExecutionFaliure {
-    SigKill,     // Task should be killed after this execution
-    BadConsumer, // Error in accessing consumer or parsing message
+    SigKill,        // Task should be killed after this execution
+    BadConsumer,    // Error in accessing consumer or parsing message
+    NoOrchestrator, // Error in communicating with orchestrator
 }
 
 // Labeled handle to a tokio thread
@@ -73,17 +75,19 @@ pub struct GenericNode {
     pub broker: Option<RabbitBroker>,
     pub system_id: String,
     pub rabbit_addr: String,
+    pub orchestrator_addr: String,
     pub deployments: std::collections::LinkedList<DeploymentInfo>,
 }
 
 impl GenericNode {
-    pub fn new(system_id: &str, rabbit_addr: &str) -> GenericNode {
+    pub fn new(system_id: &str, rabbit_addr: &str, orchestrator_addr: &str) -> GenericNode {
         GenericNode {
             deployment_processes: vec![],
             queue_consumers: vec![],
             worker_tasks: vec![],
             broker: None,
             rabbit_addr: rabbit_addr.to_owned(),
+            orchestrator_addr: orchestrator_addr.to_owned(),
             system_id: system_id.to_owned(),
             deployments: std::collections::LinkedList::new(),
         }

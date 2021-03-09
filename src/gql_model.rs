@@ -1,8 +1,12 @@
 //! Defines the model and resolvers for much of the GraphQL Schema
 
+use crate::platform_executor::NodeMode;
 use serde::{Deserialize, Serialize};
-use std::string::ToString; // for strum enum to string
 use std::time::SystemTime;
+use std::{
+    string::ToString,
+    time::{Duration, UNIX_EPOCH},
+}; // for strum enum to string
 use strum_macros::{Display, EnumString};
 
 #[derive(Serialize, Debug, Deserialize, Clone, PartialEq, juniper::GraphQLEnum)]
@@ -38,12 +42,15 @@ pub struct Node {
     pub id: String,
     pub model: String,
     pub addr: String,
+    pub mode: NodeMode,
+    pub orchestration_priority: Option<u8>,
     uptime: u64,
     ram_free: u64,
     ram_used: u64,
     load_avg_5: f32,
     pub deployments: Vec<String>,
     services: Vec<Service>,
+    pub update_time: u64,
 }
 
 impl Clone for Node {
@@ -52,12 +59,15 @@ impl Clone for Node {
             id: self.id.to_owned(),
             model: self.model.to_owned(),
             addr: self.addr.clone(),
+            mode: self.mode.clone(),
+            orchestration_priority: self.orchestration_priority,
             ram_free: self.ram_free,
             ram_used: self.ram_used,
             load_avg_5: self.load_avg_5,
             uptime: self.uptime,
             deployments: Vec::new(),
             services: Vec::new(),
+            update_time: self.update_time,
         };
         for service in self.services.iter() {
             node.services.push(service.clone());
@@ -73,17 +83,29 @@ impl Clone for Node {
 // non-gql impl block for Node
 // TODO rename so this makes more sense (is really node-info or something)
 impl Node {
-    pub fn new(id: &str, model: &str, addr: &str) -> Node {
+    pub fn new(
+        id: &str,
+        model: &str,
+        addr: &str,
+        mode: NodeMode,
+        orchestration_priority: Option<u8>,
+    ) -> Node {
         Node {
             id: id.to_owned(),
             model: model.to_owned(),
             addr: addr.to_owned(),
+            mode: mode,
+            orchestration_priority: orchestration_priority,
             uptime: 0,
             ram_free: 0,
             ram_used: 0,
             load_avg_5: 0.0,
             deployments: vec![],
             services: vec![],
+            update_time: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_else(|_| Duration::new(0, 0))
+                .as_secs(),
         }
     }
 
@@ -113,6 +135,10 @@ impl Node {
 
     /// update the node values
     pub fn update(&mut self, ram_free: u64, ram_used: u64, uptime: u64, load_avg_5: f32) {
+        self.update_time = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_else(|_| Duration::new(0, 0))
+            .as_secs();
         self.ram_free = ram_free;
         self.ram_used = ram_used;
         self.uptime = uptime;
@@ -140,6 +166,8 @@ impl Node {
                 None => "placeholder_model",
             },
             addr,
+            NodeMode::ORCHESTRATOR, // TODO figure out how mode is useful
+            None,
         );
         if let Some(u) = uptime {
             n.uptime = u;
@@ -382,7 +410,6 @@ impl Platform {
         }
     }
 
-    // TODO modify to update_instance
     pub fn add_node(&mut self, node: Node) {
         self.nodes.push(node);
     }
@@ -391,7 +418,6 @@ impl Platform {
         // TODO complete
     }
 
-    // TODO modify to update_instance
     pub fn add_deployment(&mut self, deployment: Deployment) {
         self.deployments.push(deployment);
     }

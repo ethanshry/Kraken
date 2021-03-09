@@ -167,6 +167,10 @@ At this point, there is no platform resilliancy. In fact, should anything bad ha
 
 Ideally, this will be fixed in the next iteration, and faliures will lead to re-deployments and rollover processes.
 
+### A Note on RabbitMQ Active/Active
+
+This was abandoned due to https://www.rabbitmq.com/clustering.html, more specifically https://www.rabbitmq.com/clustering.html#node-count, which claims that even numbers of nodes (specifically 2) is a VERY BAD IDEA.
+
 ## Deployments
 
 Deployments to the platform are requested via the GraphQL interface `create_deployment` mutation (typically via the Kraken-UI). When a request comes in, it creates an entry in the Orchestrator's database with the `ApplicationStatus::DeploymentRequested` status. The next time `execute` is called for our Orchestrator, it will see this requested deployment and look for the least-loaded worker node to deploy to. The orchestrator will then send a `WorkRequestMessage` of `WorkRequestType::RequestDeployment` to that worker. This will then add an entry to that worker's `work_requests` queue. When `execute` is next called for that worker, it will see that request, and start creating the application container. Deployments are handled by Docker, to allow for platform-agnostic deployment. Dockerfiles for the platform are stored in the `CARGO_MANIFEST_DIR/dockerfiles` folder.

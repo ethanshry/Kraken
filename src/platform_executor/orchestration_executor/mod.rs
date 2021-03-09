@@ -1,21 +1,19 @@
 //! Defines the Orchestrator role, which manages work for all devices on the platform
 use super::{ExecutionFaliure, Executor, GenericNode, SetupFaliure, Task};
-use crate::git_utils::clone_remote_branch;
 use crate::gql_model::{Deployment, Service, ServiceStatus};
 use crate::gql_schema::{Mutation, Query};
-use crate::network::wait_for_good_healthcheck;
+use crate::rabbit::RabbitBroker;
 use crate::rabbit::{
     deployment_message::DeploymentMessage, log_message::LogMessage,
     sysinfo_message::SysinfoMessage, QueueLabel, RabbitMessage,
 };
-use crate::{
-    file_utils::{append_to_file, copy_dir_contents_to_static},
-    rabbit::RabbitBroker,
-};
+use kraken_utils::file::{append_to_file, copy_dir_contents_to_static, overwrite_to_file};
+use kraken_utils::git::clone_remote_branch;
+use kraken_utils::network::wait_for_good_healthcheck;
 use log::{info, warn};
-use std::fs;
 use std::process::Command;
 use std::sync::{Arc, Mutex, MutexGuard};
+use std::{fs, str};
 use tokio::task::JoinHandle;
 
 pub mod db;
@@ -31,6 +29,9 @@ pub struct OrchestrationExecutor {
     api_server: Option<tokio::task::JoinHandle<()>>,
     /// A reference to the Database containing information about the platform
     pub db_ref: Arc<Mutex<Database>>,
+    /// The rank of this executor for rollover. 0 implies this is the active orchestrator, None implies none is assigned.
+    /// Otherwise is treated as lowest number is highest priority
+    pub rollover_priority: Option<u8>,
 }
 
 /// Ensures the deployment has the potential for success
@@ -86,13 +87,104 @@ pub async fn validate_deployment(git_url: &str, git_branch: &str) -> Result<(Str
     }
 }
 
+/// Attempts to fetch the numeric priority for the specified system in an orchestration faliure
+///
+/// # Arguments
+///
+/// * `orchestrator_ip` - The ip of the currently active orchestrator
+/// * `system_id` - The node id which we are trying to request the priority for
+///
+/// # Returns
+///
+/// * Some(u8) - The rollover priority for the specified system_id
+/// * None - No priority indicates there was an issue communicating with the primary orchestrator
+///
+pub async fn get_rollover_priority(orchestrator_addr: &str, system_id: &str) -> Option<u8> {
+    let url = format!(
+        "http://{orchestrator_addr}/health/{node_id}",
+        orchestrator_addr = orchestrator_addr,
+        node_id = system_id
+    );
+
+    info!("Making request to: {}", url);
+
+    let client = reqwest::Client::new();
+
+    let response = client.get(&url).send().await;
+
+    match response {
+        Ok(r) => match r.text().await {
+            Ok(data) => Some(data.parse::<u8>().unwrap()),
+            Err(e) => {
+                info!("Failed to parse response: {}", e);
+                None
+            }
+        },
+        Err(_) => None,
+    }
+}
+
+pub async fn get_db_data(orchestrator_addr: &str) -> Option<Database> {
+    let url = format!(
+        "http://{orchestrator_addr}/export/database",
+        orchestrator_addr = orchestrator_addr,
+    );
+
+    info!("Making request to: {}", url);
+
+    let client = reqwest::Client::new();
+
+    let response = client.get(&url).send().await;
+
+    match response {
+        Ok(r) => match r.json::<Database>().await {
+            Ok(data) => Some(data),
+            Err(e) => {
+                info!("Failed to parse JSON to Database: {}", e);
+                None
+            }
+        },
+        Err(_) => None,
+    }
+}
+
+pub async fn backup_log_file(orchestrator_addr: &str, log_id: &str) {
+    let url = format!(
+        "http://{orchestrator_addr}/log/{log_id}",
+        orchestrator_addr = orchestrator_addr,
+        log_id = log_id
+    );
+
+    info!("Making request to: {}", url);
+
+    let client = reqwest::Client::new();
+
+    let response = client.get(&url).send().await;
+
+    if let Ok(r) = response {
+        match r.text().await {
+            Ok(data) => {
+                // write log to file
+                overwrite_to_file(
+                    &format!("{}/{}.log", crate::utils::LOG_LOCATION, log_id),
+                    &data,
+                );
+            }
+            Err(e) => {
+                info!("Failed to parse logfile response: {}", e);
+            }
+        }
+    }
+}
+
 impl OrchestrationExecutor {
     /// Creates a new Orchestrator Object
-    pub fn new() -> OrchestrationExecutor {
+    pub fn new(rollover_priority: Option<u8>) -> OrchestrationExecutor {
         let db = Database::new();
         OrchestrationExecutor {
             api_server: None,
             db_ref: Arc::new(Mutex::new(db)),
+            rollover_priority: rollover_priority,
         }
     }
 
@@ -156,8 +248,16 @@ impl OrchestrationExecutor {
                 crate::utils::UI_BRANCH_NAME,
                 "tmp/site",
             )
-            .wait()
             .unwrap();
+
+            // Inject github token to site
+            kraken_utils::file::append_to_file(
+                "tmp/site/.env",
+                &format!(
+                    "AUTH={}",
+                    std::env::var("GITHUB_TOKEN").unwrap_or(String::from("undefined"))
+                ),
+            );
 
             // Build the site
             info!("Compiling Kraken-UI");
@@ -175,6 +275,19 @@ impl OrchestrationExecutor {
         }
 
         info!("Kraken-UI is now available at commit SHA: {}", sha);
+    }
+
+    /// Cleans up all running docker containers
+    ///
+    /// # Arguments
+    ///
+    /// * `node` - A GenericNode containing information about the platform
+    /// * `o` - An OrchestrationExecutor with a reference to the database
+    pub async fn clean_docker() {
+        match Command::new("make").arg("cleanup").output() {
+            Ok(_) => info!("System has sucesfully cleaned up all docker images"),
+            Err(_) => warn!("System failed to clean up docker images. Usually this means there was nothing to clean up")
+        };
     }
 
     /// Deploys a new RabbitMQ instance to the local machine
@@ -245,7 +358,9 @@ impl OrchestrationExecutor {
                         crate::api_routes::get_graphql_handler,
                         crate::api_routes::post_graphql_handler,
                         crate::api_routes::site,
-                        crate::api_routes::logs
+                        crate::api_routes::logs,
+                        crate::api_routes::health,
+                        crate::api_routes::export_db
                     ],
                 )
                 .attach(options)

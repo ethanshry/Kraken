@@ -27,6 +27,10 @@ impl Node {
         self.addr.as_str()
     }
 
+    fn orchestration_priority(&self) -> i32 {
+        self.orchestration_priority.unwrap_or(255) as i32
+    }
+
     pub fn uptime(&self) -> i32 {
         self.uptime() as i32
     }
@@ -48,16 +52,13 @@ impl Node {
         self.current_ram_percent()
     }
 
+    pub fn update_time(&self) -> i32 {
+        self.update_time as i32
+    }
+
     fn deployments(&self) -> Vec<String> {
         self.deployments.clone()
     }
-
-    // TODO figure out what is going on with this
-    /*
-    fn services(&self, context: &Database) -> Option<&Vec<Service>> {
-        context.get_platform_services()
-    }
-    */
 }
 
 #[juniper::object(context = ManagedDatabase)]
@@ -222,7 +223,7 @@ impl Query {
     /// Get a list of deployment IDs which have available log files
     pub fn get_available_logs() -> FieldResult<Vec<String>> {
         let mut logs = vec![];
-        for file in crate::file_utils::get_all_files_in_folder(&format!(
+        for file in kraken_utils::file::get_all_files_in_folder(&format!(
             "{}/{}",
             env!("CARGO_MANIFEST_DIR"),
             crate::utils::LOG_LOCATION
@@ -300,6 +301,22 @@ impl Mutation {
             None => Err(FieldError::new(
                 "No Active Deployment with the specified id",
                 juniper::graphql_value!({"internal_error": "no_deployment_id"}),
+            )),
+        }
+    }
+
+    /// Request the platform terminate the specified deployment
+    fn delete_log(context: &ManagedDatabase, log_id: String) -> FieldResult<bool> {
+        match std::fs::remove_file(&format!(
+            "{}/{}/{}.log",
+            env!("CARGO_MANIFEST_DIR"),
+            crate::utils::LOG_LOCATION,
+            log_id
+        )) {
+            Ok(_) => Ok(true),
+            Err(_) => Err(FieldError::new(
+                "No existing log with the specified id",
+                juniper::graphql_value!({"internal_error": "no_log_for_id"}),
             )),
         }
     }

@@ -1,12 +1,1 @@
-{
-    "deployments": [],
-    "orchestrator": {
-        "ui": {
-            "src_url": "https://github.com/ethanshry/Kraken-UI.git",
-            "cloned_commit": "abcdef",
-            "status": "DEPLOYED"
-        },
-        "services": []
-    },
-    "nodes": []
-}
+{}
