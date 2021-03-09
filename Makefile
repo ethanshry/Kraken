@@ -12,7 +12,6 @@ cargoclean:
 	cargo sweep -t 7
 
 build-pi:
-	#OPENSSL_DIR=/home/ethanshry/pi/ssl-install/openssl cargo build --release --target armv7-unknown-linux-gnueabihf
 	cargo build --release --target armv7-unknown-linux-gnueabihf --features vendored-openssl
 	echo "build result can be found at ./target/armv7-unknown-linux-gnueabihf/debug/Kraken"
 

@@ -362,28 +362,36 @@ impl DockerBroker {
     /// # Arguments
     ///
     /// * `image_id` - The id of the image to turn into a container
-    /// * `port` - a port within the container which should be exposed. This will map the port to its corresponding port on the machine (i.e. 9000 -> 9000)
-    ///
+    /// * `host_port` - A port that will be exposed publicly on the node.
+    /// * `container_port` - The port which should be exposed on the docker container. If None, will map host_port -> container port
     /// # Examples
     ///
     /// ```
     /// let docker = DockerBroker::new();
     /// docker.start_container("12345", 9000); // builds image 12345 and maps 9000->9000
     /// ```
-    pub async fn start_container(&self, image_id: &str, port: i64) -> Result<String, ()> {
+    pub async fn start_container(
+        &self,
+        image_id: &str,
+        host_port: i64,
+        container_port: Option<i64>,
+    ) -> Result<String, ()> {
         // TODO support exposing multiple ports? Check out TCP vs UDP?
         let mut ports = HashMap::new();
 
-        let p = format!("{}/tcp", port);
+        let p = format!("{}/tcp", host_port);
 
         ports.insert(&p[0..p.len()], HashMap::new());
 
         let mut port_bindings = HashMap::new();
         port_bindings.insert(
-            p.clone(),
+            match container_port {
+                Some(p) => format!("{}/tcp", p),
+                None => p.clone(),
+            },
             Some(vec![PortBinding {
                 host_ip: Some(String::from("0.0.0.0")),
-                host_port: Some(format!("{}", port)),
+                host_port: Some(format!("{}", host_port)),
             }]),
         );
 

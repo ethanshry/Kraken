@@ -60,3 +60,18 @@ if let Some(orch_db) = database_data {
     }
     ```
 ````
+
+```rust
+// Annoying string matching stuff
+let ids = docker
+                .start_container(
+                    &r.image_id,
+                    port,
+                    match &dockerfile_name.unwrap_or("")[..] {
+                        "static" => Some(80),
+                        _ => None,
+                    },
+                )
+                .await;
+
+```

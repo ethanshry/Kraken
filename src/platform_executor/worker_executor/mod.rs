@@ -216,7 +216,16 @@ pub async fn handle_deployment(
             msg.update_message(ApplicationStatus::Deploying, "", None);
             msg.send(&publisher, QueueLabel::Deployment.as_str()).await;
 
-            let ids = docker.start_container(&r.image_id, port).await;
+            let ids = docker
+                .start_container(
+                    &r.image_id,
+                    port,
+                    match &dockerfile_name.unwrap_or("")[..] {
+                        "static" => Some(80),
+                        _ => None,
+                    },
+                )
+                .await;
 
             if let Ok(id) = ids {
                 info!("Docker container started for {} with id {}", git_uri, id);
