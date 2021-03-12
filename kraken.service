@@ -1,0 +1,9 @@
+[Unit]
+Description=Kraken
+After=network.target
+
+[Service]
+ExecStart=/bin/bash /usr/local/bin/kraken_runner.sh
+
+[Install]
+WantedBy=multi-user.target

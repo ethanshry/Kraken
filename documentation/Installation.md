@@ -27,6 +27,17 @@ There are three scripts for installation.
 
 ## Raspberry Pi
 
+Cross compile:
+
+```bash
+make build-pi
+
+# navigate to ./target/armv7-unknown-linux-gnueabihf/release
+# rename `kraken` to `kraken-rpi`
+# create github release
+
+```
+
 Some things:
 
 ```bash
