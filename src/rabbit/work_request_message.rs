@@ -100,7 +100,7 @@ impl RabbitMessage<WorkRequestMessage> for WorkRequestMessage {
             }
         }
     }
-    // TODO apparently this signature isn't ideal for all use cases, maybe needs a refactor (#54)
+
     fn deconstruct_message(packet_data: &Vec<u8>) -> (String, WorkRequestMessage) {
         let res = Vec::from_iter(
             String::from_utf8_lossy(packet_data)

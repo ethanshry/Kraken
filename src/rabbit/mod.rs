@@ -144,7 +144,6 @@ impl RabbitBroker {
             .expect("ack")
     }
 
-    // TODO dive into dyn
     /// Consumes a queue data stream and calls handler on each incoming message
     ///
     /// # Arguments

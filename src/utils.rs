@@ -12,6 +12,7 @@ pub const UI_BRANCH_NAME: &str = "main";
 pub const LOG_LOCATION: &str = "log";
 
 /// Pulls the systemId from the id.txt file, if one exists
+/// If it does not, then create an id.txt file to use
 pub fn get_system_id() -> String {
     return match fs::read_to_string("id.txt") {
         Ok(contents) => {

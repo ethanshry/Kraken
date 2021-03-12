@@ -27,6 +27,8 @@ impl Node {
         self.addr.as_str()
     }
 
+    /// Orchestration rollover priority - a priority of 255 indicates the node has not been assigned a priority
+    /// 1 is the current orchestrator, 2 is the primary rollover candidate
     fn orchestration_priority(&self) -> i32 {
         self.orchestration_priority.unwrap_or(255) as i32
     }
@@ -43,7 +45,7 @@ impl Node {
         self.ram_used() as i32
     }
 
-    /// Five minute load average (<1 indicated processes are not waiting for resources)
+    /// Five minute load average (<1 indicates processes are not waiting for resources)
     pub fn load_avg_5(&self) -> f64 {
         self.load_avg_5() as f64
     }
@@ -242,7 +244,7 @@ impl Query {
     }
 }
 
-// Defines GQL Mutations
+/// Defines GQL Mutations
 pub struct Mutation;
 
 #[juniper::object(Context = ManagedDatabase)]
