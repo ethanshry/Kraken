@@ -1,3 +1,3 @@
-//! The configuration pertaining to deployments (in particular, the shipwreck.toml)
+//! The configuration pertaining to deployments (specifically, the shipwreck.toml)
 
 pub mod shipwreck;
