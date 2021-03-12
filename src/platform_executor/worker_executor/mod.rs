@@ -9,7 +9,7 @@ use crate::rabbit::{
 };
 use kraken_utils::file::{copy_dockerfile_to_dir, get_all_files_in_folder};
 use kraken_utils::git::clone_remote_branch;
-use log::{error, info};
+use log::{error, info, warn};
 use sysinfo::SystemExt;
 
 mod executor;
@@ -18,21 +18,19 @@ mod executor;
 /// Handles standard tasks- the ability to deploy applications, the monitoring of system statistics, etc
 pub struct WorkerExecutor {
     /// Each WorkRequestMessage is a request of the worker by the orchestrator
-    //work_requests: Arc<Mutex<Queue<WorkRequestMessage>>>,
+    /// C is a consumer of this worker's WorkRequestQueue
     c: Option<lapin::Consumer>,
 }
 
 impl WorkerExecutor {
     /// Creates a new Orchestrator Object
     pub fn new() -> WorkerExecutor {
-        WorkerExecutor {
-            c: None, //work_requests: Arc::new(Mutex::new(Queue::new())),
-        }
+        WorkerExecutor { c: None }
     }
 }
 
 impl WorkerExecutor {
-    /// Returns a task which publishes system info to RabbitMQ
+    /// Returns a task which publishes system info periodically to RabbitMQ
     pub async fn get_publish_node_system_stats_task(
         node: &GenericNode,
     ) -> tokio::task::JoinHandle<()> {
@@ -70,14 +68,18 @@ impl WorkerExecutor {
     }
 }
 
+/// Attempts to kill all deployments that this deployment is responsible for.
 pub async fn clear_deployments(node: &mut GenericNode) {
     for d in &node.deployments {
-        kill_deployment(
+        if let Err(_) = kill_deployment(
             &node.system_id,
             node.broker.as_ref().unwrap(),
             &d.deployment_id,
         )
-        .await;
+        .await
+        {
+            warn!("Error while attempting to clear_deployment for deployment_id {}, this is probably due to an attempt to kill a deployment which is no longer running", &d.deployment_id);
+        }
     }
     node.deployments = std::collections::LinkedList::new();
 }
@@ -98,8 +100,9 @@ pub async fn handle_deployment(
 
     msg.send(&publisher, QueueLabel::Deployment.as_str()).await;
 
-    // TODO make function to execute a thing in a tmp dir which auto-cleans itself (#51)
-    std::fs::remove_dir_all(&format!("tmp/deployment/{}", id));
+    if let Err(_) = std::fs::remove_dir_all(&format!("tmp/deployment/{}", id)) {
+        warn!("Error while deleting {}, this is likely because the directory does not exist, so this error can probably be ignored", &format!("tmp/deployment/{}", id));
+    }
     let tmp_dir_path = &format!("tmp/deployment/{}", id);
 
     info!("Creating Container {}", &container_guid);

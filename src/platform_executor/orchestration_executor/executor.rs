@@ -1,4 +1,6 @@
 //! Executor impl for OrchestrationExecutor
+//! Handles orchestration tasks, like queue establishment, coordination of deployments,
+//! rollover management, etc.
 
 use super::{ExecutionFaliure, Executor, GenericNode, OrchestrationExecutor, SetupFaliure, Task};
 use crate::gql_model::{ApplicationStatus, Node};
@@ -20,7 +22,7 @@ impl Executor for OrchestrationExecutor {
     /// Workers are primarilly concerned with connecting to RabbitMQ, and establishing necesarry queues
     async fn setup(&mut self, node: &mut GenericNode) -> Result<(), SetupFaliure> {
         OrchestrationExecutor::clean_docker().await;
-        // If we are not the primary orchestrator, give up
+        // If we are not the primary orchestrator, we don't need any further setup
         if self.rollover_priority != Some(0) {
             return Ok(());
         }

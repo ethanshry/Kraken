@@ -91,7 +91,7 @@ pub async fn validate_deployment(git_url: &str, git_branch: &str) -> Result<(Str
 ///
 /// # Arguments
 ///
-/// * `orchestrator_ip` - The ip of the currently active orchestrator
+/// * `orchestrator_addr` - The ip and port of the currently active orchestrator
 /// * `system_id` - The node id which we are trying to request the priority for
 ///
 /// # Returns
@@ -124,6 +124,7 @@ pub async fn get_rollover_priority(orchestrator_addr: &str, system_id: &str) -> 
     }
 }
 
+/// Requests a copy of the Database data from the orchestrator_addr, and stores it in the Database on the current Node
 pub async fn get_db_data(orchestrator_addr: &str) -> Option<Database> {
     let url = format!(
         "http://{orchestrator_addr}/export/database",
@@ -148,6 +149,7 @@ pub async fn get_db_data(orchestrator_addr: &str) -> Option<Database> {
     }
 }
 
+/// Requests a copy of the specified logfile from the orchestrator_addr, and stores it in the appropriate location on the current Node
 pub async fn backup_log_file(orchestrator_addr: &str, log_id: &str) {
     let url = format!(
         "http://{orchestrator_addr}/log/{log_id}",
@@ -192,7 +194,7 @@ impl OrchestrationExecutor {
     ///
     /// # Arguments
     ///
-    /// * `o` - An OrchestrationExecutor with a reference to the database
+    /// * `db` - An Arc to a Database where we can store information about the UI
     async fn fetch_ui(db: Arc<Mutex<Database>>) {
         if &std::env::var("SHOULD_CLONE_UI").unwrap_or_else(|_| "YES".into())[..] == "NO" {
             warn!(
@@ -278,11 +280,6 @@ impl OrchestrationExecutor {
     }
 
     /// Cleans up all running docker containers
-    ///
-    /// # Arguments
-    ///
-    /// * `node` - A GenericNode containing information about the platform
-    /// * `o` - An OrchestrationExecutor with a reference to the database
     pub async fn clean_docker() {
         match Command::new("make").arg("cleanup").output() {
             Ok(_) => info!("System has sucesfully cleaned up all docker images"),
@@ -295,7 +292,7 @@ impl OrchestrationExecutor {
     /// # Arguments
     ///
     /// * `node` - A GenericNode containing information about the platform
-    /// * `o` - An OrchestrationExecutor with a reference to the database
+    /// * `db` - An Arc to a Database which we can store information about our connection
     pub async fn deploy_rabbit_instance(
         db: Arc<Mutex<Database>>,
         node: &GenericNode,
@@ -489,8 +486,8 @@ impl OrchestrationExecutor {
         })
     }
 
+    /// declares the queues in RabbitMQ which the orchestrator will be consuming
     async fn establish_rabbit_queues(&mut self, broker: &RabbitBroker) -> Result<(), ()> {
-        // Unwrap is safe here because we will have returned Err if broker is None
         let mut result = false || broker.declare_queue(QueueLabel::Sysinfo.as_str()).await;
 
         result |= broker.declare_queue(QueueLabel::Deployment.as_str()).await;

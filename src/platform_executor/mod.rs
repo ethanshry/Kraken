@@ -1,4 +1,8 @@
-//! The core logic for different NodeModes
+//! The core logic for the platform
+//! This module encompases two primary executors
+//! * `OrchestrationExecutors` - Handles logic in reguards to platform creation, rollover, and deployment coordination
+//! * `WorkerExecutor` - Handles logic in relation to the management and monitoring of Docker Containers for Deployments
+
 pub mod orchestration_executor;
 pub mod worker_executor;
 
@@ -17,27 +21,34 @@ pub enum NodeMode {
     ORCHESTRATOR,
 }
 
-// Defines reasons for faliure of the setup task
+/// Defines reasons for faliure of the setup task
 #[derive(Debug)]
 pub enum SetupFaliure {
-    NoPlatform, // Could not connect to existing platform
-    BadRabbit,  // Could not create RammitMQ instance
-    NoRabbit,   // Could not connect to Rabbit Instance
+    /// Could not connect to existing platform
+    NoPlatform,
+    /// Could not create RammitMQ instance
+    BadRabbit,
+    /// Could not connect to Rabbit Instance
+    NoRabbit,
 }
 
-// Defines reasons for faliure of the execute task
+/// Defines reasons for faliure of the execute task
 pub enum ExecutionFaliure {
-    SigKill,        // Task should be killed after this execution
-    BadConsumer,    // Error in accessing consumer or parsing message
-    NoOrchestrator, // Error in communicating with orchestrator
+    /// Task should be killed after this execution
+    SigKill,
+    /// Error in accessing consumer or parsing message
+    BadConsumer,
+    /// Error in communicating with orchestrator
+    NoOrchestrator,
 }
 
-// Labeled handle to a tokio thread
+/// Labeled handle to a tokio thread
 pub struct Task {
     task: tokio::task::JoinHandle<()>,
     label: String,
 }
 
+/// Information about a Deployment
 pub struct DeploymentInfo {
     pub deployment_id: String,
     pub address: String,
@@ -68,6 +79,8 @@ impl DeploymentInfo {
     }
 }
 
+/// Data struct which contains data that should be shared between Executors
+/// Or data which we don't want to lose access to if one executor crashes
 pub struct GenericNode {
     pub deployment_processes: Vec<Task>,
     pub queue_consumers: Vec<Task>,
@@ -94,8 +107,8 @@ impl GenericNode {
     }
 }
 
-/// Defines the interface to be used by all executors on a device
-/// The executor will have setup called once, to instantiate the executor, and then will have execute called repeatedly so long as the executor is alive.
+/// An executor is a way to group collections of functionality under different roles
+/// Each implementor should expect setup to be called once, to set up, and then for execute to be called repeatedly so long as the executor is alive.
 #[async_trait]
 pub trait Executor {
     /// Is called once to set up this node
@@ -103,7 +116,7 @@ pub trait Executor {
     /// Is called repeatedly after setup has terminated
     async fn execute(&mut self, node: &mut GenericNode) -> Result<(), ExecutionFaliure>;
     /// Connects to the local RabbitMQ service
-    /// TODO make this more complex (i.e. exponential backoff or smtn)
+    /// TODO make this smarter (i.e. exponential backoff or smtn)
     async fn connect_to_rabbit_instance(addr: &str) -> Result<RabbitBroker, String> {
         match RabbitBroker::new(addr).await {
             Some(b) => Ok(b),
