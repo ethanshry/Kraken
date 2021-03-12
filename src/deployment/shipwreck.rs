@@ -86,12 +86,10 @@ pub fn get_config_for_path(p: &str) -> Option<Config> {
 
 /// Parses a config file from a shipwreck.toml from a string of data
 pub fn get_config_for_string(data: &str) -> Option<Config> {
-    println!("{:?}", data);
     let data: Option<Config> = match toml::from_str(&data) {
         Ok(data) => Some(data),
         Err(_) => None,
     };
-    println!("{:?}", data);
     validate_config(data)
 }
 
