@@ -80,6 +80,9 @@ impl Database {
         }
     }
 
+    /// Assigns a priority to a node
+    /// If a node already has a priority, it will return it
+    /// Otherwise, it will assign a node the next lowest priority
     pub fn get_orchestrator_rank(&mut self, node_id: &str) -> u8 {
         if let Some(n) = self.nodes.get(node_id) {
             let mut n = n.clone();

@@ -21,7 +21,6 @@ use std::convert::TryFrom;
 use std::fs;
 use std::fs::File;
 use std::io::Read;
-use std::process::Command;
 use std::time::SystemTime;
 use uuid::Uuid;
 
