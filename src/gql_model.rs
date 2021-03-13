@@ -9,13 +9,14 @@ use std::{
 }; // for strum enum to string
 use strum_macros::{Display, EnumString};
 
+/// Statuses for Platform Services
 #[derive(Serialize, Debug, Deserialize, Clone, PartialEq, juniper::GraphQLEnum)]
 pub enum ServiceStatus {
     OK,
     ERRORED,
 }
 
-// Specify GraphQL type with field resolvers (i.e. no computed resolvers)
+/// A Service Provided by the Kraken Platform
 #[derive(Serialize, Debug, Deserialize, Clone, PartialEq, juniper::GraphQLObject)]
 #[graphql(description = "A Service installed on the device to support the platform")]
 pub struct Service {
@@ -36,20 +37,36 @@ impl Service {
     }
 }
 
-//#[derive(juniper::GraphQLObject)]
+/// A Node on the Platform
+/// Nodes contain multiple `executor`s, which handle platform tasks
 #[derive(Serialize, Debug, Deserialize, PartialEq)]
 pub struct Node {
+    /// Unique ID for the node
     pub id: String,
+    /// Descriptive string for the node (i.e. x86-64 Ubuntu 20.04, desktop-computer, Raspberry Pi 4, etc)
     pub model: String,
+    /// The IP address of the node
     pub addr: String,
+    /// The mode the node is operating in
     pub mode: NodeMode,
+    /// The prirority this node holds for orchestration
+    /// * `Some(1)` - This node is the platform orchestrator
+    /// * `Some(n)` - This node is a rollover candidate, lowest number = highest priority
+    /// * `None` - This node has not been assigned a rollover priority
     pub orchestration_priority: Option<u8>,
+    /// The time the node has been running
     uptime: u64,
+    /// How much ram is free on the device, in...bytes?
     ram_free: u64,
+    /// How much ram is in use on the device, in...bytes?
     ram_used: u64,
+    /// Average load on the CPU over last five minutes
     load_avg_5: f32,
+    /// List of deployment IDs associated with this Node
     pub deployments: Vec<String>,
+    /// List of platform services associated with this Node
     services: Vec<Service>,
+    /// The last time this Node's data was updated
     pub update_time: u64,
 }
 
@@ -193,32 +210,54 @@ impl Node {
     }
 }
 
+/// States an application (deployment) can be in
 #[derive(
     Serialize, Deserialize, Debug, Display, Clone, PartialEq, juniper::GraphQLEnum, EnumString,
 )]
 pub enum ApplicationStatus {
+    /// User has requested a deployment
+    /// This state is used by the orchestrator to initiate new deployments
     DeploymentRequested,
+    /// Ensuring deployment has a valid configuration
     ValidatingDeploymentData,
+    /// Deployment data is being cloned to the target Node
     RetrievingApplicationData,
+    /// The deployment is being assigned to a Worker on the Platform
     DelegatingDeployment,
+    /// The Worker is building the docker image
     BuildingDeployment,
+    /// Unused, intended for CI operations
     TestingDeployment,
+    /// Docker image has been built, rolling out container
     Deploying,
+    /// Deployment is running normally
     Running,
+    /// Deployment has errored somewhere along the build process, or container has errored out
     Errored,
+    /// The deployment has been requested to be killed. Used by the Orchestrator to Delegate Destruction
     DestructionRequested,
+    /// The orchestrator is dispatching a WorkRequestMessage to kill the Deployment
     DelegatingDestruction,
+    /// The Worker responsible for the Deployment is killing the Docker Container
     DestructionInProgress,
+    /// The Deployment has succesfully been destroyed
     Destroyed,
+    /// The User has requested the deployment be updated from the remote source
+    /// This will trigger a Destruction, followed by a Deplotment Request
     UpdateRequested,
 }
 
+/// An Application Status coupled with a time for the update
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct TemporalApplicationStatus {
     pub status: ApplicationStatus,
+    /// Unix timestamp for the ApplicationStatus update. This is typically assigned
+    /// upon insertion into the orchestrator database, so the time probably lags behind when it actually
+    /// would have entered that state
     pub time: u64,
 }
 
+/// Information associated with a Kraken-UI instance
 #[derive(Serialize, Debug, Deserialize, Clone, juniper::GraphQLObject)]
 #[graphql(description = "Metadata pertaining to the Orchestrator User Interface")]
 pub struct OrchestratorInterface {
@@ -245,6 +284,7 @@ impl OrchestratorInterface {
     }
 }
 
+/// Orchestrator-Specific Metadata
 #[derive(Serialize, Debug, Deserialize, Clone, juniper::GraphQLObject)]
 #[graphql(description = "Information about the Platform's Orchestration State")]
 pub struct Orchestrator {
@@ -271,20 +311,31 @@ impl Orchestrator {
 /// Information related to a specific Deployment
 #[derive(Serialize, Debug, Deserialize, PartialEq)]
 pub struct Deployment {
+    /// Unique ID for this Deployment
     pub id: String,
+    /// The github.com url this deployment comes from (NOTE: NOT the clone link)
     pub src_url: String,
     pub git_branch: String,
     pub version: String,
+    /// The git commit associated with the current version of the Deployment
     pub commit: String,
+    /// The current status of this Deplyment
     pub status: (ApplicationStatus, SystemTime),
+    /// A history of statuses for this Deployment
     pub status_history: Vec<(ApplicationStatus, SystemTime)>,
     pub results_url: String,
+    /// The URL the Deployment can be accessed on
     pub deployment_url: String,
     pub port: String,
-    pub node: String, //Vec<Option<ApplicationInstance>>,
+    /// The ID of the Node responsible for the Deployment
+    pub node: String,
+    /// Bytes the container is using in Disk, this is rarely appropriately reported by docker
     pub size: i32,
+    /// Current memory usage for the container, in Mb
     pub mem_mb: i32,
+    /// Maximum memory usage for the container, in Mb
     pub max_mem_mb: i32,
+    /// CPU utilization, as a percentage
     pub cpu_usage: f32,
 }
 
@@ -299,7 +350,7 @@ impl Deployment {
         results_url: &str,
         deployment_url: &str,
         port: &str,
-        node: &str, //&Vec<Option<ApplicationInstance>>,
+        node: &str,
     ) -> Deployment {
         Deployment {
             id: id.to_owned(),
@@ -312,7 +363,7 @@ impl Deployment {
             results_url: results_url.to_owned(),
             deployment_url: deployment_url.to_owned(),
             port: port.to_owned(),
-            node: node.to_owned(), //instances.to_owned(),
+            node: node.to_owned(),
             size: 0,
             mem_mb: 0,
             max_mem_mb: 0,
@@ -320,20 +371,21 @@ impl Deployment {
         }
     }
 
+    /// Updates the node's status, keeping a record of status history
     pub fn update_status(&mut self, new_status: &ApplicationStatus) {
-        self.status_history.push(self.status.clone());
-        self.status = (new_status.clone(), SystemTime::now());
+        // Only update the status if it is actually new
+        if *new_status != self.status.0 {
+            self.status_history.push(self.status.clone());
+            self.status = (new_status.clone(), SystemTime::now());
+        }
     }
 
+    /// Updates relevant docker container information
     pub fn update_container_status(&mut self, stats: &crate::docker::ContainerStatus) {
         self.size = stats.size;
         self.mem_mb = stats.mem_mb;
         self.max_mem_mb = stats.mem_max_mb;
         self.cpu_usage = stats.cpu_usage;
-    }
-
-    pub fn remove_instance(&mut self, _instance_id: &str) {
-        // TODO complete
     }
 }
 
@@ -356,36 +408,6 @@ impl Clone for Deployment {
             max_mem_mb: self.max_mem_mb,
             cpu_usage: self.cpu_usage,
         }
-    }
-}
-
-/// Information related to a specific application instance
-#[derive(Serialize, Deserialize, Debug, Clone, juniper::GraphQLObject)]
-#[graphql(description = "A Service installed on the device to support the platform")]
-pub struct ApplicationInstance {
-    instance_id: String,
-    node_id: String,
-    deployment_id: String,
-    status: ServiceStatus,
-}
-
-impl ApplicationInstance {
-    pub fn new(
-        instance_id: &str,
-        node_id: &str,
-        deployment_id: &str,
-        status: ServiceStatus,
-    ) -> ApplicationInstance {
-        ApplicationInstance {
-            instance_id: instance_id.to_owned(),
-            node_id: node_id.to_owned(),
-            deployment_id: deployment_id.to_owned(),
-            status,
-        }
-    }
-
-    pub fn update_status(&mut self, new_status: ServiceStatus) {
-        self.status = new_status;
     }
 }
 
@@ -414,15 +436,42 @@ impl Platform {
         self.nodes.push(node);
     }
 
-    pub fn remove_node(&mut self, _node_id: &str) {
-        // TODO complete
-    }
-
     pub fn add_deployment(&mut self, deployment: Deployment) {
         self.deployments.push(deployment);
     }
+}
 
-    pub fn remove_deployment(&mut self, _deployment_id: &str) {
-        // TODO complete
+#[cfg(test)]
+mod test {
+
+    use super::*;
+
+    #[test]
+    fn deployment_appropriately_updates_status() {
+        let mut d = Deployment::new(
+            "12345",
+            "http://github.com",
+            "main",
+            "1.0.0",
+            "abc123",
+            ApplicationStatus::Running,
+            "http://123.456",
+            "http://123.456",
+            "5000",
+            "54321",
+        );
+
+        assert!(d.status_history.len() == 0);
+
+        d.update_status(&ApplicationStatus::Running);
+
+        // Status is same as initial, so history should not change
+        assert!(d.status_history.len() == 0);
+
+        d.update_status(&ApplicationStatus::Errored);
+
+        // Status is same as initial, so history should change
+        assert!(d.status_history.len() == 1);
+        assert!(d.status_history[0].0 == ApplicationStatus::Running);
     }
 }

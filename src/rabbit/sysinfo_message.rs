@@ -1,4 +1,4 @@
-//! A message containing status information for a device on the platform
+//! A message containing status information for a node on the platform
 use crate::rabbit::RabbitMessage;
 
 use std::iter::FromIterator;
@@ -57,7 +57,11 @@ impl RabbitMessage<SysinfoMessage> for SysinfoMessage {
                 .map(|s| s.to_string()),
         );
 
-        let mut msg = SysinfoMessage::new(res.get(0).unwrap(), res.get(1).unwrap(), res.get(2).unwrap());
+        let mut msg = SysinfoMessage::new(
+            res.get(0).unwrap(),
+            res.get(1).unwrap(),
+            res.get(2).unwrap(),
+        );
 
         if res.len() == 7 {
             msg.update_message(

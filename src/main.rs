@@ -30,6 +30,7 @@ use platform_executor::{
     ExecutionFaliure, Executor, GenericNode, NodeMode,
 };
 
+/// Sets up the orhcestration and worker executors for a system
 async fn setup_system(
     node: &mut GenericNode,
     orchestrator: &mut OrchestrationExecutor,
@@ -48,10 +49,14 @@ async fn setup_system(
     }
 }
 
+/// Primary Application Entrypoint
 #[tokio::main]
 async fn main() -> Result<(), ()> {
+    // Establish logging
     dotenv::dotenv().ok();
     env_logger::init();
+
+    // Try to find a platform to attach to
     let orchestrator_ip = match &std::env::var("SHOULD_SCAN_NETWORK")
         .unwrap_or_else(|_| "YES".into())[..]
     {
@@ -73,6 +78,7 @@ async fn main() -> Result<(), ()> {
         }
     };
 
+    // Either we are attaching to a rabbit instance, or we will be the rabbit instance
     let rabbit_addr: String = format!(
         "amqp://{}:5672",
         &orchestrator_ip
@@ -84,6 +90,7 @@ async fn main() -> Result<(), ()> {
 
     let system_uuid = utils::get_system_id();
 
+    // Create shared data storage for our executors
     let mut node = GenericNode::new(
         &system_uuid,
         &rabbit_addr,
@@ -97,6 +104,8 @@ async fn main() -> Result<(), ()> {
     );
     info!("node {} established", system_uuid);
 
+    // Figure out our rollover priority based on whether we are attaching to a platform or creating one
+    // This priority is used by the Orchestration Executor to figure out what its responsibilities should be
     let rollover_priority = match node_mode {
         NodeMode::ORCHESTRATOR => Some(0),
         NodeMode::WORKER => {
@@ -108,22 +117,31 @@ async fn main() -> Result<(), ()> {
         }
     };
 
+    // We have all the information we need to establish our executors, so establish them
     let mut orchestrator =
         platform_executor::orchestration_executor::OrchestrationExecutor::new(rollover_priority);
     let mut worker = platform_executor::worker_executor::WorkerExecutor::new();
     setup_system(&mut node, &mut orchestrator, &mut worker).await;
 
     // Allows easy injection of a baseline configuration for the orchestrator
+    // Currently does nothing
     testing::setup_experiment(&mut node, &mut orchestrator).await;
 
+    // The main execution loop
     loop {
+        // Each node has an orchestration executor and a worker executor
+        // Try to do orchestration tasks
         match orchestrator.execute(&mut node).await {
             Ok(_) => {}
+            // In the case of faliures, figure out what kind of faliure it is and handle recovery appropriately
             Err(faliure) => match faliure {
                 ExecutionFaliure::SigKill => {
                     panic!("Orchestrator indicated a critical execution faliure, exiting")
                 }
+                // If we can't connect to rabbitMQ as the orchestrator, something got very messed up with Docker.
+                // Only primary orchestrators will have this error, so safest bet is to just crash and let platform recover itself
                 ExecutionFaliure::BadConsumer => panic!("Worker could not connect to rabbit"),
+                // Rollover Candidate cannot detect primary orchestrator, try to reconnect or roll over
                 ExecutionFaliure::NoOrchestrator => {
                     // Orchestrator could not be found
                     // If we are here, we are beyond trying to re-connect
@@ -170,10 +188,9 @@ async fn main() -> Result<(), ()> {
                 }
             },
         };
-        // An Orchestrator IS a worker, so do worker tasks too
-        // This may cause problems later due to sharing of Node information? Not sure
         match worker.execute(&mut node).await {
             Ok(_) => {}
+            // In the case of faliure in worker tasks, we just want to fail. Typically errors here will be caught by the Orchestrator first
             Err(faliure) => match faliure {
                 ExecutionFaliure::SigKill => {
                     panic!("Worker indicated a critical execution faliure")
@@ -184,6 +201,7 @@ async fn main() -> Result<(), ()> {
                 ),
             },
         };
+        // TODO delta timing would be much better here
         std::thread::sleep(std::time::Duration::from_millis(500));
     }
 

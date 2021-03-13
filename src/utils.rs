@@ -6,12 +6,17 @@ use std::fs;
 use std::io::Write;
 use uuid::Uuid;
 
+/// Port for Rocket server
 pub const ROCKET_PORT_NO: u16 = 8000;
+/// Git Clone URL for Kraken-UI
 pub const UI_GIT_ADDR: &str = "https://github.com/ethanshry/Kraken-UI.git";
+/// The branch we want to pull for Kraken-UI
 pub const UI_BRANCH_NAME: &str = "main";
+/// The filepath we want to use to store log files for Deployments
 pub const LOG_LOCATION: &str = "log";
 
 /// Pulls the systemId from the id.txt file, if one exists
+/// If it does not, then create an id.txt file to use
 pub fn get_system_id() -> String {
     return match fs::read_to_string("id.txt") {
         Ok(contents) => {

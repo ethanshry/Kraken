@@ -64,7 +64,7 @@ impl Executor for WorkerExecutor {
     /// Primarilly focused on handling deployment/kill/update requests, and processing logs
     async fn execute(&mut self, node: &mut GenericNode) -> Result<(), ExecutionFaliure> {
         // Each execution will perform a single task in the work queue.
-        // If more work needs to be completed, execute should be called again
+        // If more work needs to be completed, it will happen when execute is next called
 
         match &mut self.c {
             Some(c) => {

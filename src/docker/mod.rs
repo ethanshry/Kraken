@@ -21,7 +21,6 @@ use std::convert::TryFrom;
 use std::fs;
 use std::fs::File;
 use std::io::Read;
-use std::process::Command;
 use std::time::SystemTime;
 use uuid::Uuid;
 
@@ -33,7 +32,7 @@ use docker_container::DockerContainer;
 /// The Docker Broker connects to the Docker Engine socket via the bollard crate
 /// Kraken can then use this connection to interface with the Docker engine.
 pub struct DockerBroker {
-    /// Connection to the Rabbit Instance (Should be one per device)
+    /// Connection to the Docker Engine socket
     pub conn: bollard::Docker,
 }
 
@@ -159,7 +158,6 @@ impl DockerBroker {
         }
 
         log_items
-        //for log in self.conn.logs(container_id, options).iter() {}
     }
 
     /// Gets a list of running docker containers
@@ -217,12 +215,17 @@ impl DockerBroker {
     /// # Arguments
     ///
     /// * `source_path` - The path relative to the root of the crate which contains the desired image contents. A `Dockerfile` is expected to be in this folder.
+    /// * `id` - An id for the container, if one is not provided, it will be generated.
+    ///
+    /// # Returns
+    ///
+    /// * `Result<DockerImageBuildResult, String>` -  Returns a DockerImageBuildResult on succesful build, or a string description of the error otherwise
     ///
     /// # Examples
     ///
     /// ```
     /// let docker = DockerBroker::new();
-    /// docker.build_image("./tmp/test-proj"); // builds image 12345 and maps 9000->9000
+    /// docker.build_image("./tmp/test-proj", Some(12345)); // builds image 12345 from the specified directory
     /// ```
     pub async fn build_image(
         &self,
@@ -267,7 +270,7 @@ impl DockerBroker {
                             dockerfile: "Dockerfile",
                             t: &container_guid,
                             rm: true,
-                            networkmode: "bridge", // TODO probably doesn't work right now
+                            networkmode: "bridge",
                             ..Default::default()
                         },
                         None,
@@ -325,38 +328,6 @@ impl DockerBroker {
         }
     }
 
-    /// Builds a docker image from a local project folder
-    ///
-    /// This will create a `/tmp/containers` directory if it doesn't exist to store a tar of the project before building the image.
-    /// # Arguments
-    ///
-    /// * `source_path` - The path relative to the root of the crate which contains the desired image contents. A `Dockerfile` is expected to be in this folder.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// let docker = DockerBroker::new();
-    /// docker.build_image("./tmp/test-proj"); // builds image 12345 and maps 9000->9000
-    /// ```
-    pub async fn create_by_cli(&self, _image_name: &str) -> Result<DockerImageBuildResult, String> {
-        let container_guid = Uuid::new_v4().to_hyphenated().to_string();
-        // tar the directory
-        let _res = Command::new("docker")
-            .arg("run")
-            .arg("-d")
-            .arg("-t")
-            .arg(&container_guid)
-            .output()
-            .expect("error in docker build");
-
-        Ok(DockerImageBuildResult {
-            log: vec![String::from("")],
-            image_id: container_guid,
-        })
-
-        //docker run -d --hostname my-rabbit --name rab -p 5672:5672 rabbitmq:3
-    }
-
     /// Both creates and starts a docker container
     ///
     /// # Arguments
@@ -368,7 +339,8 @@ impl DockerBroker {
     ///
     /// ```
     /// let docker = DockerBroker::new();
-    /// docker.start_container("12345", 9000); // builds image 12345 and maps 9000->9000
+    /// docker.start_container("12345", 9000, None); // starts image 12345 and maps docker:9000->host:9000
+    /// docker.start_container("12345", 9000, Some(500)); // starts image 12345 and maps docker:500->host:9000
     /// ```
     pub async fn start_container(
         &self,
@@ -566,11 +538,13 @@ impl DockerBroker {
     }
 }
 
+/// Struct to capture the results from a build operation
 #[derive(Debug)]
 pub struct DockerImageBuildResult {
     pub log: Vec<String>,
     pub image_id: String,
 }
+/// Struct to capture the results from a container status check
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
 pub struct ContainerStatus {
     pub state: bollard::models::ContainerStateStatusEnum,
@@ -578,4 +552,34 @@ pub struct ContainerStatus {
     pub mem_mb: i32,
     pub mem_max_mb: i32,
     pub cpu_usage: f32,
+}
+
+#[cfg(test)]
+mod test {
+
+    use super::*;
+
+    #[tokio::test]
+    async fn docker_broker_can_connect_to_socket() {
+        let broker = DockerBroker::new().await;
+
+        assert!(broker.is_some());
+
+        if let Some(b) = broker {
+            b.get_running_containers().await;
+            assert!(true);
+        }
+    }
+
+    #[tokio::test]
+    async fn docker_prune_should_never_fail() {
+        let broker = DockerBroker::new().await;
+
+        assert!(broker.is_some());
+
+        if let Some(b) = broker {
+            b.prune().await;
+            assert!(true);
+        }
+    }
 }

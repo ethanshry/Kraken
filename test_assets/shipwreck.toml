@@ -1,0 +1,11 @@
+[app]
+name="test"
+version="1.0.0"
+author="Ethan Shry"
+endpoint="https://github.com/ethanshry/scapenode"
+
+[config]
+port=7211
+lang="node"
+test="npm test"
+run="npm start"

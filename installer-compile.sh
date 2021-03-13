@@ -27,35 +27,14 @@ git clone https://github.com/ethanshry/Kraken.git .
 cargo build --release --features vendored-openssl
 
 echo "Setting up for auto-run on boot"
-
-read -r -d '\n' fileout <<RUNNER
-#!/bin/bash
-cd ~/.kraken
-LOCAL=\$(git rev-parse @)
-REMOTE=\$(git rev-parse \${u})
-
-# update in remote, re-fetch
-if [ \$LOCAL != \$REMOTE]; then
-    git pull
-    curl -s https://api.github.com/repos/ethanshry/kraken/releases/latest \
-        | grep "browser_download_url" \
-        | cut -d : -f 2,3 \
-        | tr -d \" \
-        | wget -qi -
-fi
-cargo run --release --features vendored-openssl
-RUNNER
-
-echo "$fileout" >> /usr/local/bin/kraken_runner.sh
+sudo cp ./kraken_runner_compile.sh /usr/local/bin/kraken_runner.sh
 chmod 755 /usr/local/bin/kraken_runner.sh
 
-read -r -d '\n' fileout <<CRON_CONFIG
-@reboot /usr/local/bin/kraken_runner.sh
-CRON_CONFIG
+sudo cp ./kraken.service /etc/systemd/system/kraken.service
+sudo chmod 644 /etc/systemd/system/kraken.service
+sudo chown root  /etc/systemd/system/kraken.service
 
-echo "$fileout" >> /var/spool/cron/crontabs/kraken
-chmod 600 /var/spool/cron/crontabs/kraken
-chown pi  /var/spool/cron/crontabs/kraken
-chgrp crontab /var/spool/cron/crontabs/kraken
+sudo systemctl daemon-reload
+sudo systemctl enable kraken.service
 
-echo "Finished setting up kraken, reboot or execute '~/.kraken/kraken-rpi &' from ~/.kraken to run"
+echo "Finished setting up kraken, reboot or execute 'sudo systemctl start kraken.service' to run"

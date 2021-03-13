@@ -1,4 +1,4 @@
-//! Module containing definitions of rocket routes
+//! Module containing definitions for rocket routes
 
 use crate::{
     gql_schema::{Mutation, Query},
@@ -34,7 +34,7 @@ pub fn ping() -> content::Plain<String> {
 /// Match to worker healthcheck requests
 #[rocket::get("/export/database", rank = 2)]
 pub fn export_db(context: State<'_, ManagedDatabase>) -> content::Json<String> {
-    let mut db = context.db.lock().unwrap();
+    let db = context.db.lock().unwrap();
     content::Json(serde_json::to_string(db.deref()).unwrap())
 }
 

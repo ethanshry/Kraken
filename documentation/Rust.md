@@ -75,3 +75,19 @@ let ids = docker
                 .await;
 
 ```
+
+```rust
+// get_container_status from docker mod.rs
+let mut status = ContainerStatus {
+                    state: i
+                        .state
+                        .unwrap()
+                        .status
+                        .unwrap_or(bollard::models::ContainerStateStatusEnum::DEAD),
+                    size: i.size_root_fs.unwrap_or(0) as i32,
+                    mem_mb: 0,
+                    mem_max_mb: 0,
+                    cpu_usage: 0.0,
+                };
+
+```
