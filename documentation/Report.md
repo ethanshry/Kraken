@@ -44,7 +44,9 @@ While cost and complexity form the backbone of the motivation for the project, t
 
 ## Platform Overview
 
-The Kraken App Deployment Platform is a collection of devices all running the Kraken agent. The platform is made up of a single Orchestration node, and 0+ Worker nodes (although technically all nodes are both Orchestrators and Workers, see [Executors](##Executors) for more details). Users of the platform are able to access a web interface which allows them to monitor all devices (nodes) which are running the agent. From this interface, they can also request the deployment of an application to the platform via a Github Url. This will trigger the platform's orchestrator to validate the deployment, and select a worker to handle the deployment. Users can then use the interface to monitor their deployment- accessing information like deployment status, resource usage statistics, application logs, and request updates or destruction of a deployment.
+The Kraken App Deployment Platform is a collection of devices all running the Kraken agent. The platform is made up of a single Orchestration node, and 0+ Worker nodes (although technically all nodes are both Orchestrators and Workers, see [Executors](###Executors) for more details). Users of the platform are able to access a web interface which allows them to monitor all devices (nodes) which are running the agent. From this interface, they can also request the deployment of an application to the platform via a Github Url. This will trigger the platform's orchestrator to validate the deployment, and select a worker to handle the deployment. Users can then use the interface to monitor their deployment- accessing information like deployment status, resource usage statistics, application logs, and request updates or destruction of a deployment.
+
+TODO platform architecture diagram
 
 ### Platform Capabilities
 
@@ -59,6 +61,8 @@ That being said, the platform is highly extensible. To add additional deployment
 Due to the fact that it is designed to support primarilly API deployments, the platform will simply expose a single internal docker port externally to your machine. Ephemeral Tasks are technically supported, though their behavior has not been extensively validated. Other deployment types (databases, complex deployments utilizing docker networking features, etc) are not officially supported, though may be possible via the custom Dockerfile feature.
 
 ## Usage
+
+This section will cover the important pieces needed to use the platform.
 
 ### Requirements
 
@@ -76,8 +80,6 @@ The platform relies on only a few external dependencies.
 All of the required packages will be installed as part of the installation path you follow, see [Installation](###Installation) for more information.
 
 ### Installation
-
-TODO update Installation.md with more detailed info, and reference/link to it here
 
 The goal of the installation process is to be as simple as possible for users. Therefore, it only takes the execution of a single script to get a system set up for use by the app deployment platform.
 
@@ -98,17 +100,118 @@ Running an installer performs the following sequence of tasks:
 # establishment of the kraken.service, which will run a script to auto-update and auto-run the platform on boot
 ```
 
-We provide two different installation options (the `installer-compile` and `installer-pi`) since compiling a rust project (or this project in particualr) requires significant computing resources, as well as openssl, which does not come built in with Raspbian. As a result, prior to distributing a pre-compiled binary with openssl built in, compiling on a Raspberry Pi 3 B+ took upwards of an hour with active cooling, as well as additional configuration to get openssl installed. Now, Raspberry Pis simply need to download a ~20MB binary. See [Compilation](###Compilation) for more information about how rust achieves low-effort cross compilation.
+We provide two different installation options (the `installer-compile` and `installer-pi`) since compiling a rust project (or this project in particualr) requires significant computing resources, as well as openssl, which does not come built in with Raspbian. As a result, prior to distributing a pre-compiled binary with openssl built in, compiling on a Raspberry Pi 3 B+ took upwards of an hour with active cooling, as well as additional configuration to get openssl installed. Now, Raspberry Pis simply need to download a ~20MB binary. See [Compilation](###Compilation) for more information about how Kraken achieves low-effort cross compilation.
 
-### Development
+The most detailed and up to date information about installation is available [here](./Installation.md).
 
 ### Application Onboarding
 
-## Program Structure
+Getting your application onboarded to the platform requires only a few simple steps. First, you must make sure you have a running version of the platform on your LAN. You can either follow the [installation steps above](###Installation), or simply clone the project and run the platform temporarily.
+
+Then you must configure your application to be run on the platform. To do this, you must simply create a `shipwreck.toml` file in the root of your repository, in the branch you want to be deployed to the platform. An example might look like the following:
+
+```toml
+[app]
+name="scapenode"
+version="1.0.0"
+author="Ethan Shry"
+endpoint="https://github.com/ethanshry/scapenode"
+
+[config]
+port=7211
+lang="node"
+run="npm start"
+```
+
+Components of the `app` section describe metadata about the application, while fields of the `config` section describe important configuration aspects of your deployment. More details about these fields are available on the `info` screen in the platform interface, and the config field format is implemented in the `crate::deployment::shipwreck` module.
+
+From there, you simply need to access the `deployments` tab of the interface, and select the appropriate URL and branch for your deployment. This should enable the `Create Deployment` button, from which you can spin up your deployment.
+
+![Deployment UI Example](./images/deployment_url_and_branch_ok.png)
+
+## Platform/Program Systems
+
+This section will cover the main systems involved in the platform. The figure below outlines the major responsibilities of a node on a platform.
+
+![Node Components](./images/node_components_diagram.png)
+
+As you can see, each node has two different `Executors` running at any given time. These are oulined more in the [Executors](###Executors) section, however an executor is a way to differentiate groupd of functionality. There are effectively two types of nodes on the platform- a single orchestrator, and many workers. Their responsibilities are covered in the [Workers](###Workers), [Orchestrators](###Orchestrators), and [Orchestration Rollover Candidates](###Orchestration-Rollover-Candidates) sections below.
+
+The way the various pieces of the platform communicate with each other is outlined in [Communication](###Communication).
+
+### Program Initialization + Main Program Loop
+
+The platform initialization and execution is relatively straightforward, due to the use of executors. The setup process follows the following rough outline:
+
+- Scan the LAN for an orchestration node by looking for an open REST endpoint at the Kraken REST API port number. If one exists, then start in worker mode. Otherwise start in orchestrator mode.
+- Establish other relevant platform requirements (finding or creating a guid, figuring out the rabbitMQ address, determining a baseline rollover priority)
+- Setup the orchestrator and worker executors
+
+Then the execution loop is incredibly simple:
+
+- Call `execute` on our `OrchestrationExecutor`, and handle an error if it occurs
+- Call `execute` on our `WorkerExecutor`, and handle an error if it occurs
+
+If we boil down this process to its simplest form, it looks something like this:
+
+```rust
+
+async fn main() -> Result<(), ()> {
+
+    // Figure out if we are a worker or orchestrator by trying to find a platform to attach to
+    let node_mode = match find_orchestrator_on_lan().await {
+        Some(ip) => NodeMode::ORCHESTRATOR,
+        None => NodeMode::WORKER
+    };
+
+    // other setup steps
+    // ...
+
+    // Setup our executors
+    let mut orchestrator = OrchestrationExecutor::new();
+    orchestrator.setup().await;
+    let mut worker = WorkerExecutor::new();
+    worker.setup().await;
+
+    // The main execution loop
+    loop {
+        // Each node has an orchestration executor and a worker executor
+        match orchestrator.execute(&mut node).await {
+            Ok(_) => {}
+            Err(faliure) => match faliure {
+                // handle orchestrator faliures
+                // this might involve orchestration rollover
+                // ...
+            },
+        };
+        match worker.execute(&mut node).await {
+            Ok(_) => {}
+            Err() => {
+                // handle various forms of ExecutionFaliure
+                // ...
+            }
+        };
+        sleep(Duration::from_millis(500));
+    }
+}
+
+```
+
+You will note the use of a sleep at the end of this execution loop. This is simply to prevent the platform from performing hundreds of unnecesarry iterations if it has no work to do. While delta timing here might be preferred in a production environment and needed to gaurantee as quick as possible response times, in my experience this method has very little impact on platform responsiveness, and is marginally simpler, so I didn't worry about it.
 
 ### Executors
 
+### Workers
+
+### Orchestrators
+
+### Orchestration Rollover Candidates
+
 ### Communication
+
+![Platform Communication](./images/platform_communication_diagram.png)
+
+### In-Memory State Storage
 
 ### Rollover
 

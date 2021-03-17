@@ -36,9 +36,13 @@ pub struct Config {
 /// Data required to configure the specifics of a deployment
 #[derive(Serialize, Deserialize, Debug)]
 pub struct DeploymentConfig {
+    /// The language of your deployment, used to select an approopriate dockerfile
     pub lang: String,
+    /// The command to test your application, this is not used
     pub test: String,
+    /// The command to execute your application
     pub run: String,
+    /// The port to expose on your device from the container
     pub port: i64,
 }
 

@@ -39,7 +39,7 @@ impl Executor for WorkerExecutor {
         // send system stats
         let publish_node_stats_task =
             WorkerExecutor::get_publish_node_system_stats_task(node).await;
-        node.worker_tasks.push(Task {
+        self.tasks.push(Task {
             task: publish_node_stats_task,
             label: String::from("NodeStats"),
         });
@@ -84,7 +84,7 @@ impl Executor for WorkerExecutor {
                             )
                             .await;
                             if let Ok(r) = res {
-                                node.deployments.push_back(r);
+                                self.deployments.push_back(r);
                             }
                         }
                         WorkRequestType::CancelDeployment => {
@@ -95,7 +95,7 @@ impl Executor for WorkerExecutor {
                             )
                             .await;
                             if let Ok(r) = res {
-                                for d in node.deployments.iter_mut() {
+                                for d in self.deployments.iter_mut() {
                                     if d.deployment_id == r {
                                         d.deployment_is_ok(false);
                                         break;
@@ -111,7 +111,7 @@ impl Executor for WorkerExecutor {
         }
 
         let mut deployments_to_remove = vec![];
-        for (index, d) in node.deployments.iter_mut().enumerate() {
+        for (index, d) in self.deployments.iter_mut().enumerate() {
             // if more than a second has passed, check for logs and get updated deployment status
             if d.last_log_time
                 .elapsed()
@@ -163,9 +163,9 @@ impl Executor for WorkerExecutor {
         deployments_to_remove.reverse();
 
         for index in deployments_to_remove.iter() {
-            let mut split_list = node.deployments.split_off(*index);
+            let mut split_list = self.deployments.split_off(*index);
             split_list.pop_front();
-            node.deployments.append(&mut split_list);
+            self.deployments.append(&mut split_list);
         }
         Ok(())
     }

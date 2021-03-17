@@ -147,7 +147,7 @@ async fn main() -> Result<(), ()> {
                     // If we are here, we are beyond trying to re-connect
                     warn!("Orchestrator lost");
                     // If we lose the orchestrator, get rid of existing delployments
-                    crate::platform_executor::worker_executor::clear_deployments(&mut node).await;
+                    worker.clear_deployments(&mut node).await;
                     if Some(1) == orchestrator.rollover_priority {
                         // We are the primary backup, so establish ourselves as the orchestrator
                         orchestrator.rollover_priority = Some(0);

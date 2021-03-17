@@ -32,6 +32,7 @@ pub struct OrchestrationExecutor {
     /// The rank of this executor for rollover. 0 implies this is the active orchestrator, None implies none is assigned.
     /// Otherwise is treated as lowest number is highest priority
     pub rollover_priority: Option<u8>,
+    pub queue_consumers: Vec<Task>,
 }
 
 /// Ensures the deployment has the potential for success
@@ -187,6 +188,7 @@ impl OrchestrationExecutor {
             api_server: None,
             db_ref: Arc::new(Mutex::new(db)),
             rollover_priority: rollover_priority,
+            queue_consumers: vec![],
         }
     }
 

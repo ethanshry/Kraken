@@ -79,17 +79,17 @@ impl Executor for OrchestrationExecutor {
 
         // Consume RabbitMQ Queues
         let sysinfo_consumer = self.get_sysinfo_consumer(node);
-        node.queue_consumers.push(Task {
+        self.queue_consumers.push(Task {
             task: sysinfo_consumer,
             label: String::from(QueueLabel::Sysinfo.as_str()),
         });
         let deployment_consumer = self.get_deployment_consumer(node);
-        node.queue_consumers.push(Task {
+        self.queue_consumers.push(Task {
             task: deployment_consumer,
             label: String::from(QueueLabel::Deployment.as_str()),
         });
         let log_consumer = self.get_log_consumer(node);
-        node.queue_consumers.push(Task {
+        self.queue_consumers.push(Task {
             task: log_consumer,
             label: String::from(QueueLabel::Log.as_str()),
         });
@@ -369,10 +369,10 @@ impl Executor for OrchestrationExecutor {
                         db.delete_node(&n.id);
                     }
                     // we will try to tell the node to spin down its deployments as a courtesy
-                    for d in node.deployments.iter() {
+                    for d_id in n.deployments.iter() {
                         let msg = WorkRequestMessage::new(
                             WorkRequestType::CancelDeployment,
-                            Some(&d.deployment_id),
+                            Some(&d_id[..]),
                             None,
                             None,
                             None,
