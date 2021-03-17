@@ -18,8 +18,8 @@ mod executor;
 /// Handles standard tasks- the ability to deploy applications, the monitoring of system statistics, etc
 pub struct WorkerExecutor {
     /// Each WorkRequestMessage is a request of the worker by the orchestrator
-    /// C is a consumer of this worker's WorkRequestQueue
-    c: Option<lapin::Consumer>,
+    /// work_queue_consumer is a consumer of this worker's WorkRequestQueue
+    work_queue_consumer: Option<lapin::Consumer>,
     deployments: std::collections::LinkedList<DeploymentInfo>,
     tasks: Vec<Task>,
 }
@@ -28,7 +28,7 @@ impl WorkerExecutor {
     /// Creates a new Orchestrator Object
     pub fn new() -> WorkerExecutor {
         WorkerExecutor {
-            c: None,
+            work_queue_consumer: None,
             deployments: std::collections::LinkedList::new(),
             tasks: vec![],
         }

@@ -7,10 +7,6 @@ use std::iter::FromIterator;
 pub enum WorkRequestType {
     RequestDeployment,
     CancelDeployment,
-    SetPromotionPriority, // TODO implement this. Current thought is a Node is given a promotion priority
-                          // when it loses contact with the Orchestrator.
-                          // Nodes wait their priority * 1 minute before promoting themselves to Orchestrators.
-                          // I am wondering if there should be a third role (i.e. a PromotionCanidate) which should be different from this
 }
 
 impl WorkRequestType {
@@ -19,7 +15,6 @@ impl WorkRequestType {
         match *self {
             WorkRequestType::RequestDeployment => "request_deployment",
             WorkRequestType::CancelDeployment => "cancel_deployment",
-            WorkRequestType::SetPromotionPriority => "set_promotion_priority",
         }
     }
 
@@ -27,8 +22,7 @@ impl WorkRequestType {
         // cool pattern from https://users.rust-lang.org/t/noob-enum-string-with-symbols-resolved/7668/2
         match s {
             "request_deployment" => WorkRequestType::RequestDeployment,
-            "cancel_deployment" => WorkRequestType::CancelDeployment,
-            _ => WorkRequestType::SetPromotionPriority,
+            _ => WorkRequestType::CancelDeployment,
         }
     }
 }
@@ -93,11 +87,6 @@ impl RabbitMessage<WorkRequestMessage> for WorkRequestMessage {
             )
             .as_bytes()
             .to_vec(),
-            WorkRequestType::SetPromotionPriority => {
-                format!("{}|{}", self.request_type.as_str(), self.priority.unwrap())
-                    .as_bytes()
-                    .to_vec()
-            }
         }
     }
 
@@ -122,14 +111,6 @@ impl RabbitMessage<WorkRequestMessage> for WorkRequestMessage {
             WorkRequestType::CancelDeployment => {
                 WorkRequestMessage::new(request_type, Some(&res[1]), None, None, None)
             }
-
-            WorkRequestType::SetPromotionPriority => WorkRequestMessage::new(
-                request_type,
-                None,
-                None,
-                None,
-                Some(res[1].parse::<i16>().unwrap()),
-            ),
         };
 
         (res[0].clone(), msg)

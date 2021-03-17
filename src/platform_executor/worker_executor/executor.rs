@@ -51,7 +51,7 @@ impl Executor for WorkerExecutor {
             Ok(b) => b,
             Err(_) => panic!("Could not establish rabbit connection"),
         };
-        self.c = Some(
+        self.work_queue_consumer = Some(
             broker
                 .consume_queue_incr(&node.system_id, &node.system_id)
                 .await,
@@ -66,7 +66,7 @@ impl Executor for WorkerExecutor {
         // Each execution will perform a single task in the work queue.
         // If more work needs to be completed, it will happen when execute is next called
 
-        match &mut self.c {
+        match &mut self.work_queue_consumer {
             Some(c) => {
                 let item = crate::rabbit::util::try_fetch_consumer_item(c).await;
                 if let Some(data) = item {

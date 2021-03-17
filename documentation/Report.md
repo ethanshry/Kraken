@@ -223,7 +223,76 @@ pub struct GenericNode {
 
 ### Workers
 
-A Worker, or more precisely a `WorkerExecutor`, handles all interfacing between the platform and the Docker Engine.
+A Worker, or more precisely a `WorkerExecutor`, handles all tasks in relation to actually deploying and monitoring applications. This includes almost all of the interface between the platform and the Docker Engine.
+
+```rust
+pub struct WorkerExecutor {
+    /// Each WorkRequestMessage is a request of the worker by the orchestrator
+    /// work_queue_consumer is a consumer of this worker's WorkRequestQueue
+    work_queue_consumer: Option<lapin::Consumer>,
+    deployments: std::collections::LinkedList<DeploymentInfo>,
+    tasks: Vec<Task>,
+}
+```
+
+```rust
+
+impl Executor for WorkerExecutor {
+
+    async fn setup(&mut self, node: &mut GenericNode) -> Result<(), SetupFaliure> {
+        // connect to rabbitMQ
+        connect_to_rabbit_instance(&node.rabbit_addr).await;
+
+        // create a task to monitor this Node's stats
+        self.tasks.push(Task {
+            task: WorkerExecutor::get_publish_node_system_stats_task(node).await,
+            label: String::from("NodeStats"),
+        });
+
+        // establish consumer for the worker's work queue
+        self.work_queue_consumer = Some(
+            broker.consume_queue_incr(&node.system_id, &node.system_id).await
+        );
+    }
+
+    async fn execute(&mut self, node: &mut GenericNode) -> Result<(), ExecutionFaliure> {
+
+        // if we have a WorkRequestMessage, then execute it
+        if let Some(data) = try_fetch_consumer_item(&mut self.work_queue_consumer).await {
+            let (_, task) = WorkRequestMessage::deconstruct_message(&data);
+
+            match task.request_type {
+                WorkRequestType::RequestDeployment => {
+                    handle_deployment(&task).await;
+                }
+                WorkRequestType::CancelDeployment => {
+                    kill_deployment(&task.deployment_id).await;
+                }
+            }
+        }
+
+        for (index, d) in self.deployments.iter_mut().enumerate() {
+            // if more than a second has passed, check for logs and get updated deployment status
+
+            let logs = docker.get_logs(&d.deployment_id).await;
+            if !logs.is_empty() {
+                let mut msg = LogMessage::new(&d.deployment_id, &logs.join());
+                msg.send(&publisher, QueueLabel::Log.as_str()).await;
+            }
+
+            let status = docker.get_container_status(&d.deployment_id).await
+            let mut msg = DeploymentMessage::new(&d.deployment_id, status);
+            msg.send(&publisher, QueueLabel::Deployment.as_str()).await;
+
+            if d.status.is_err() {
+                // remove deployment from those we are actively monitoring, it is dead
+                // ..
+            }
+        }
+    }
+}
+
+```
 
 ### Orchestrators
 
