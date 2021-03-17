@@ -466,17 +466,62 @@ TODO do I have more to say about this?
 
 ### Rollover
 
-### Deployments
+The rollover process for the platform is actually relatively straightforward. All rollover activities are handled by the `OrchestrationExecutor` and the `rollover_priority`. In the case that a node which is not the Orhcestrator (that is to say, with a `rollover_priority != Some(0)`) is unable to access the `/health/<requester_node_id>` REST API endpoint, that executor will go into an exponential backoff period attempting to access that route. That is to give the primary orchestrator time to recover from whatever service interruption it is experiencing. If after that period of backoff (~10s) the secondary orchestrator is unable to establish a connection, it will return an `ExecutionFaliure::NoOrchestrator` from it's `execute` method call. When this response is recieved by the main application loop, the orchestrator will then do one of two things. If we are the primary rollover candidate (i.e. `rollover_priority != Some(1)`) then we will alter our rollover priority to be `Some(0)` and establish ourselves as the primary orchestrator of a new platform. All other nodes will instead enter another period of exponential backoff (~2m) waiting to connect to the new platform.
+
+In the case of rollover, the new orchestrator will be operating on the most recently saved `Database` backup. Since the platform was designed as a development environment, we do not make any effort to re-attach to existing deployments. Instead, we send a signal to all nodes to spin down their deployments, and the primary orchestrator will treat all deployments as though they were newly requested.
 
 ### User Interface
 
+The platform UI is relatively simple. It provides basic information about the platform, including a brief tutorial for onboarding. It has a page to monitor the various nodes attached to the platform, and a place to request and monitor the various deployments on the platform.
+
+![UI Example](./images/ui_full_example.png)
+
+The User Interface is a React-Typescript app. It used Urql as the GraphQL message broker, and Ant-Design as the UI library. It is not based on Create-React-App, instead using Parcel as the bundler.
+
+TODO link to these libraries
+
 ### Compilation
 
-### REST/GraphQL API
+Due to the low resources of a rasbperry pi, compiling this project natively can take hours, For this reason, I have configured this project to support cross-compilation for Raspberry Pi. By making use of rust's tooling, this process is actually fairly straightforward.
 
-### Limitations
+First, you must define the relevant target in your `.cargo/config.toml` file:
 
-TODO remove???
+```toml
+[build]
+
+# Pi 2/3/4
+[target.armv7-unknown-linux-gnueabihf]
+linker = "arm-linux-gnueabihf-gcc"
+```
+
+Then you install the relevant linker to your system you are compiling from:
+
+```bash
+sudo apt install arm-linux-gnueabihf-gcc
+```
+
+To compile for RPi, we must also bundle in openssl. Luckily with Cargo's `features` feature, this becomes trivial. We first add `openssl` as an optional dependency to our `Config.toml`:
+
+```toml
+openssl = { version = '0.10', optional = true }
+```
+
+and then we add the openssl feature to our `Config.toml`
+
+```toml
+[features]
+vendored-openssl = ["openssl/vendored"]
+```
+
+Then, we can simply compile our project as follows:
+
+```bash
+cargo build --release --target armv7-unknown-linux-gnueabihf --features vendored-openssl
+# or for this project, just use the shortcut
+make build-pi
+```
+
+This will generate an executable of about 20MB, which can simply be uploaded to Github as a new release, which will then be downloaded by `installer-pi.sh`.
 
 ## Artifacts
 
