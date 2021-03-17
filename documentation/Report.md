@@ -227,67 +227,61 @@ A Worker, or more precisely a `WorkerExecutor`, handles all tasks in relation to
 
 ```rust
 pub struct WorkerExecutor {
-    /// Each WorkRequestMessage is a request of the worker by the orchestrator
-    /// work_queue_consumer is a consumer of this worker's WorkRequestQueue
     work_queue_consumer: Option<lapin::Consumer>,
     deployments: std::collections::LinkedList<DeploymentInfo>,
     tasks: Vec<Task>,
 }
 ```
 
+A `WorkerExecutor` is relatively simple- it has a handle to a RabbitMQ Queue, `work_queue_consumer`, over which is recieves `WorkRequestMessages`. It has a list of deployments it monitors, `deployments`, and it has a handle to other tasks it is monitoring, `tasks`.
+
+When setup is called on the `WorkerExecutor`, it connects to RabbitMQ, begins broadcasting the Node status to the orchestrator, and establishes the consumer for the `work_queue_consumer`.
+
+On a call to `execute`, the worker does two things: first, it checks to see if it has an outstanding `WorkRequestMessage`. This message is passed to the worker via the RabbitMQ consumer and is extensible, but currently only supports two request types: `RequestDeployment` and `CancelDeployment`. The request contains all the necesarry information for the Worker to perform the requested task. Finally, the `Worker` looks at all its active deployments and broadcasts any relevant log messages to the relevant RabbitMQ queue. More information about how the `RequestDeployment` process works can be found in [Deployments](###Deployments)
+
+Below you can find a simplified version of the code which implements the `Executor` trait for the `WorkerExecutor`.
+
 ```rust
 
 impl Executor for WorkerExecutor {
 
-    async fn setup(&mut self, node: &mut GenericNode) -> Result<(), SetupFaliure> {
+    async fn setup(..) -> Result<(), SetupFaliure> {
         // connect to rabbitMQ
         connect_to_rabbit_instance(&node.rabbit_addr).await;
 
         // create a task to monitor this Node's stats
-        self.tasks.push(Task {
-            task: WorkerExecutor::get_publish_node_system_stats_task(node).await,
-            label: String::from("NodeStats"),
-        });
+        WorkerExecutor::get_publish_node_system_stats_task(node).await
 
         // establish consumer for the worker's work queue
-        self.work_queue_consumer = Some(
-            broker.consume_queue_incr(&node.system_id, &node.system_id).await
-        );
+        broker.consume_queue_incr(&node.system_id).await
     }
 
-    async fn execute(&mut self, node: &mut GenericNode) -> Result<(), ExecutionFaliure> {
-
+    async fn execute(..) -> Result<(), ExecutionFaliure> {
         // if we have a WorkRequestMessage, then execute it
         if let Some(data) = try_fetch_consumer_item(&mut self.work_queue_consumer).await {
             let (_, task) = WorkRequestMessage::deconstruct_message(&data);
 
             match task.request_type {
-                WorkRequestType::RequestDeployment => {
+                RequestDeployment => {
                     handle_deployment(&task).await;
                 }
-                WorkRequestType::CancelDeployment => {
-                    kill_deployment(&task.deployment_id).await;
+                CancelDeployment => {
+                    kill_deployment(&task).await;
                 }
             }
         }
 
         for (index, d) in self.deployments.iter_mut().enumerate() {
-            // if more than a second has passed, check for logs and get updated deployment status
 
             let logs = docker.get_logs(&d.deployment_id).await;
             if !logs.is_empty() {
                 let mut msg = LogMessage::new(&d.deployment_id, &logs.join());
-                msg.send(&publisher, QueueLabel::Log.as_str()).await;
+                msg.send().await;
             }
 
             let status = docker.get_container_status(&d.deployment_id).await
             let mut msg = DeploymentMessage::new(&d.deployment_id, status);
-            msg.send(&publisher, QueueLabel::Deployment.as_str()).await;
-
-            if d.status.is_err() {
-                // remove deployment from those we are actively monitoring, it is dead
-                // ..
-            }
+            msg.send().await;
         }
     }
 }
@@ -296,19 +290,189 @@ impl Executor for WorkerExecutor {
 
 ### Orchestrators
 
+An Orchestrator, or more precisely an `OrchestratorExecutor`, is more complex. It handles all tasks in relation to coordinating deployments- this includes recieving requests for deployments/cancellations from the REST API, validating they are deployable, and distributing requests to nodes. Additionally the orchestrator is responsible for deploying and respoinding to requests from the REST and GraphQL APIs, deploying the RabbitMQ instance, storing application logs, and otherwise managing the platform.
+
+```rust
+pub struct OrchestrationExecutor {
+    /// A handle to the rocket.rs http server task
+    api_server: Option<tokio::task::JoinHandle<()>>,
+    /// A reference to the Database containing information about the platform
+    pub db_ref: Arc<Mutex<Database>>,
+    /// The rank of this executor for rollover. 0 implies this is the active orchestrator, None implies none is assigned.
+    /// Otherwise is treated as lowest number is highest priority
+    pub rollover_priority: Option<u8>,
+    pub queue_consumers: Vec<Task>,
+}
+```
+
+The most important piece of the `OrchestrationExecutor` is the `db_ref`. This is a thread-safe reference to a `Database`. See more information in [In-Memory State Storage](###In-Memory-State-Storage) and [Communication](###Communication) for how this works, but the general idea is the `api_server` has a reference to the database, and so is able to create requests there for deployments. The Orchestrator is then able to read the `Database` record for Nodes and Deployments, and take any actions necesarry based on their states.
+
+When setup is called on the `OrchestrationExecutor`, it fetches the most recent version of the `Kraken-UI` interface and compiles it, spins up a `RabbitMQ` server, connects to it, and sets up threads to consume the various status queues. Finally it establishes the REST and GraphQL APIs which serve the UI and Platform Data.
+
+On a call to `execute`, the Orchestrator does two things: first, it checks all available deployment statuses to see if there is any action to be taken. For example, a deployment might be asking to be updated, destroyed, or created. The Orchestrator will take any action necesarry for those deployments. Then, the Orchestrator will check all the `Nodes` it knows about to ensure they have recently reported a status. If they haven't, it will re-deploy any deployments owned by that Node, and otherwise remove it from the platform.
+
+Below you can find a simplified version of the code which implements the `Executor` trait for the `OrchestrationExecutor`.
+
+```rust
+
+impl Executor for OrchestrationExecutor {
+    async fn setup(..) -> Result<(), SetupFaliure> {
+
+        // Setup RabbmitMQ server and Fetch and compile Kraken-UI
+        let ui = OrchestrationExecutor::fetch_ui();
+        let rabbit = OrchestrationExecutor::deploy_rabbit_instance();
+
+        Self::connect_to_rabbit_instance().await;
+
+        // Consume RabbitMQ Queues
+        // Queue for information about Node statuses
+        self.get_sysinfo_consumer();
+
+        // Queue for information about Deployment statuses
+        self.get_deployment_consumer();
+
+        // Queue for recieving Deployment Logs
+        self.get_log_consumer();
+
+        OrchestrationExecutor::create_api_server();
+    }
+
+    async fn execute(..) -> Result<(), ExecutionFaliure> {
+
+        let deployments = db.get_deployments();
+
+        for mut deployment in d {
+            match deployment.status.0 {
+                DeploymentRequested => {
+                    // Look for free nodes to distribute tasks to
+                    deployment.update_status(ValidatingDeploymentData);
+                    if let Err(_) = validate_deployment(..) {
+                        continue
+                    }
+                    deployment.update_status(DelegatingDeployment);
+
+                    // Pick the best node to handle the deployment
+                    // ..
+
+                    deployment.update_status(Deploying);
+                    // Send work to curr_node
+                    // Create and send a WorkRequestType::RequestDeployment
+                    // For the appropriate node
+                    // ..
+                }
+                UpdateRequested => {
+                    let commit = github_api::get_tail_commit(..);
+                    if commit != deployment.commit {
+                        // Creates and sends a WorkRequestMessage::CancelDeployment
+                        // followed by a WorkRequestType::RequestDeployment
+                        // ..
+                    }
+                }
+                DestructionRequested => {
+                    // Creates and sends a WorkRequestMessage::CancelDeployment
+                    // ..
+                }
+            }
+        }
+
+        for n in db.get_nodes() {
+            // Check to see if a node hasn't been heard from in awhile
+            // If so, then re-deploy all it's owned deployments and remove
+            // All node information from the DB
+            // ..
+        }
+    }
+}
+
+```
+
 ### Orchestration Rollover Candidates
+
+Though technically this role falls under the `OrchestrationExecutor` umbrella, an Orchestration Rollover Candidate is worth talking about separately. These are `OrchestrationExecutors` which have a `rollover_priority != Some(0)`. In these cases, the `setup` for the executor will do nothing. In `execute`, the orchestrator is only responsible for checking to see that it can communicate with the primary orchestrator. If the candidate is the primary candidate (i.e. the first rollover node), then it will also backup the database and log data from the primary orchestrator.
+
+```rust
+
+impl Executor for OrchestrationExecutor {
+    async fn setup(..) -> Result<(), SetupFaliure> {
+        // We are not the primary orchestrator, so no setup is necesarry
+    }
+
+    async fn execute(..) -> Result<(), ExecutionFaliure> {
+
+        let priority = get_rollover_priority(..).await;
+        match priority {
+            None => {
+                // No priority means we have an issue with the orchestration communication
+                // Here we attempt some recovery
+                // ..
+            }
+            Some(_) => {
+                if self.rollover_priority == Some(1) {
+                    // We are the primary rollover canidate, so we need to be backing up
+                    // data from the primary
+                    let database_data = get_primary_orchestrator_db_data(..);
+                    db.clear();
+                    db.backup(database_data)
+
+                    for log in logs_to_backup {
+                        backup_log_file(&log).await;
+                    }
+                }
+                return Ok(());
+            }
+        }
+    }
+}
+
+```
 
 ### Communication
 
+The most complicated portion of this project is figuring out how all the different pieces of the platform communicate with each other. The below diagram covers the different pieces of the platform, and where they are communicating.
+
 ![Platform Communication](./images/platform_communication_diagram.png)
+
+The first thing to note is the way external users interface with the platform. The User Interface only communicates with the platform via the GraphQL API. This communication method was choses so as to maximuze flexibility in development- by using GraphQL, it is very easy to modify the schema of the requests on-the-fly, which sped up development significantly, and allows for future expansibility. The GraphQL API (which really rests on top of a standard REST API) has a thread-safe reference to the In-Memory State Storage (or the `Database`) that is owned by the `OrchestrationExecutor`. All the data to power the API comes from this database, and any user requests which are made to the platform will be created in this database. The only exception to this is the delivery of UI files (and application log files), which come from the REST API.
+
+This theme- the ownership of a thread-safe reference to the `OrchestrationExecutor`'s database, is common across all other parts of the platform as well. The `OrchestrationExecutor` only monitors the database to determine which tasks to perform. The different RabbitMQ queue consumers the database own all have a reference to this database as well, so any inbound to the `OrchestrationExecutor` comes through the database. The only exception to this is in Orchestration Rollover Candidates, which monitor a route on the REST API to ensure the primary orchestrator is still active, and to recieve their backup data.
+
+When an `OrchestrationExecutor` has a need to communicate with a `WorkerExecutor` (in either direction), that communication will travel through the RabbitMQ instance. This includes the following messages:
+
+| Channel ID   | Direction | Message Struct     | Description                                                                                   |
+| ------------ | --------- | ------------------ | --------------------------------------------------------------------------------------------- |
+| Sysinfo      | W -> O    | SysinfoMessage     | Carries information about the status of devices on the network                                |
+| Deployment   | W -> O    | DeploymentMessage  | Carries information about a deployment (either in build, while active, or after deletion)     |
+| Log          | W -> O    | LogMessage         | Carries the log information from a deployment (currently only while the deployment is active) |
+| \<SystemId\> | O -> W    | WorkRequestMessage | Allows the orchestrator to request work from a worker                                         |
 
 ### In-Memory State Storage
 
+There has been a fair bit of discussion about this already, however the primary `OrchestrationExecutor`'s `Database` is the single source of truth for the platform.
+
+```rust
+pub struct Database {
+    /// Information about the deployments the orchestrator is managing
+    deployments: HashMap<String, Deployment>,
+    /// Information about the nodes the orchestrator is managing
+    nodes: HashMap<String, Node>,
+    /// Information about the platform
+    orchestrator: Orchestrator,
+}
+```
+
+Anything which wants to communicate inbound to the `OrchestrationExecutor` (i.e. RabbitMQ Consumers and the REST/GraphQL APIs) has a thread-safe reference to this database. This model is actually very similiar to the implementation of the [mini-redis](https://github.com/tokio-rs/mini-redis) crate.
+
+TODO do I have more to say about this?
+
 ### Rollover
+
+### Deployments
 
 ### User Interface
 
 ### Compilation
+
+### REST/GraphQL API
 
 ### Limitations
 

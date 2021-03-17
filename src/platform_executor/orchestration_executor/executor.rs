@@ -253,7 +253,7 @@ impl Executor for OrchestrationExecutor {
                                         }
 
                                         deployment.node = curr_node.id.clone();
-                                        deployment.update_status(&ApplicationStatus::Errored);
+                                        deployment.update_status(&ApplicationStatus::Deploying);
                                         self.update_deployment_in_db(&deployment);
                                         // Send work to curr_node
                                         let msg = WorkRequestMessage::new(
