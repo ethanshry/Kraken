@@ -201,7 +201,29 @@ You will note the use of a sleep at the end of this execution loop. This is simp
 
 ### Executors
 
+There are a variety of tasks a `Node` on the platform must perform. These broadly fall into two categories: features required of a `Worker`, and features required of an `Orchestrator`. While the specific responsibilities for each role will be outlined in the [Workers](###Workers), [Orchestrators](###Orchestrators), and [Orchestration Rollover Candidates](###Orchestration-Rollover-Candidates) sections, all of these roles follow the same `Executor` trait.
+
+An executor is simply a struct which implements two methods: setup and execute. `setup` is called once to set up the node, and `execute` will then be called repeatedly until the executor crashes or the program terminates. Both of these methods also accept a `GenericNode`, which allows different executors to share common data, and return the same `SetupFaliure` and `ExecutionFaliure` responses across executors. This allows us to isolate different funcionality to specific executors, while having a unified way to interface with them. As a result of this design, it would be trivial to add another executor to extend the functionality of our `Node` without impacting existing executors, or running a `Node` which is only an `Orchestrator` or `Worker` without being both.
+
+```rust
+pub trait Executor {
+    /// Is called once to set up this node
+    async fn setup(&mut self, node: &mut GenericNode) -> Result<(), SetupFaliure>;
+    /// Is called repeatedly after setup has terminated
+    async fn execute(&mut self, node: &mut GenericNode) -> Result<(), ExecutionFaliure>;
+}
+
+pub struct GenericNode {
+    pub broker: Option<RabbitBroker>,
+    pub system_id: String,
+    pub rabbit_addr: String,
+    pub orchestrator_addr: String,
+}
+```
+
 ### Workers
+
+A Worker, or more precisely a `WorkerExecutor`, handles all interfacing between the platform and the Docker Engine.
 
 ### Orchestrators
 
