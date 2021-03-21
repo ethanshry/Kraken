@@ -8,6 +8,9 @@
 # ignore the system save file
 id.txt
 
+# Project specific ignores
 /static/*
 tmp/*
 log
+# ignore generated report
+documentation/report.html
