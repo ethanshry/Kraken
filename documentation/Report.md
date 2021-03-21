@@ -4,45 +4,50 @@ By Ethan Shry
 
 ## Abstract
 
-TODO: Blah blah blah
+While modern cloud platforms have significantly lowered the barrier to entry for the public deployment of web-based applications, they can still be incredibly costly and add significant complexity to the development process, especially in the beginning phases of a project. In this paper I propose an easy to use LAN-based application deployment environment which will allow developers to quickly and easily test web applications on devices on their LAN, without the need to pay for or manage cloud resources.
 
-We first discuss the motivation and aims of the project.
+In [Section 1](##I.-Background), I will discuss background information for this project, including the project's primary aims. In [Section 2](##II.-Platform-Overview), I will provide a broad overview of the platform and its capabilities. In [Section 3](##III.-Usage), I will discuss the installation and onboarding process for using the platform to deploy applications to a LAN. Finally, [Section 4](##IV.-Platform-Systems) discusses in depth the major technical systems which allow the platform to achieve the features described above.
 
-We then discuss the capabilities and usage of the project
+## I. Background
 
-We then discuss the underlying technologies/systems which make the project possible
+### Motivation
 
-## Motivation
+Over the past several years, the proliferation of cloud services like Amazon Web Services (AWS), Microsoft Azure, and Google Cloud Platform (GCP) have lowered the barrier to the deployment of publicly accesible web applications. Many companies have migrated their entire operations away from private data centers, and entirely rely on these cloud offerings. Despite this, the cost of these solutions remains high for hobbyist developers. Below is a breakdown of the cost of hardware costs for dedicated, non-preemptible servers on the top three cloud platforms:
 
-Over the past several years, the proliferation of cloud services like Amazon Web Services (AWS), Microsoft Azure, and Google Cloud Platform (GCP) have lowered the barrier to the development and deployment of web-based applications. Many companies have migrated their entire operations away from private data centers, and entirely rely on cloud offerings. Despite this, the cost of these solutions remains high for hobbyist developers. Below is a breakdown of the cost of hardware costs for dedicated, non-preemptible servers on the top three cloud platforms:
+| Instance Name | Platform | Specs           | Price (dollars/month) |
+| ------------- | -------- | --------------- | --------------------- |
+| EC2 t2.micro  | AWS      | 1 CPUs, 1GB RAM | $8.47                 |
+| A1 v2         | Azure    | 1 CPUs, 2GB RAM | $26.28                |
+| EC2 t2.large  | AWS      | 2 CPUs, 8GB RAM | $67.75                |
+| A4 v2         | Azure    | 4 CPUs, 8GB RAM | $116.07               |
+| e2-standard-2 | GCP      | 2 CPUs, 8GB RAM | $48.91                |
 
-| Instance Name       | Specs           | Price (dollars/month) |
-| ------------------- | --------------- | --------------------- |
-| EC2 t2.micro (AWS)  | 1 CPUs, 1GB RAM | $8.47                 |
-| A1 v2 (Azure)       | 1 CPUs, 2GB RAM | $26.28                |
-| EC2 t2.large (AWS)  | 2 CPUs, 8GB RAM | $67.75                |
-| A4 v2 (Azure)       | 4 CPUs, 8GB RAM | $116.07               |
-| e2-standard-2 (GCP) | 2 CPUs, 8GB RAM | $48.91                |
+While there are cheaper instances available if you opt for premptible services, or reserve hardware for an extended period of time, each platform has tens or hundreds of possible server configurations, which can make simply determining the correct offering for your use case a hassle. Beyond the determination of appropriate server capacity, users of cloud platforms also need to dediccate time to develop their knowledge to make use of these servers- often requiring the management of Linux servers, firewalls, security group settings, remote code deployment pipelines, and the management of cloud platform credentials, to name a few things. While these are undoubtedly valuable in a production application, they can add unnecesarry complexity to any project, especially during the early stages of development when the focus could be on the development of project features.
 
-While there are cheaper instances available if you opt for premptible services, or reserve hardware for an extended period of time, each platform has tens or hundreds of possible server configurations, which can make simply determining what you can get by with a challenge. Beyond the determination of appropriate server capacity, users of cloud platforms also need to develop the knowledge to make use of these servers- often requiring the management of Linux servers, firewall or security group settings, and the protection of cloud platform credentials. While these skills might be valuable in the workforce, often they add unnecesarry complexity to a project, especially during the early stages of development when the focus could be on the development of project features.
+### Goals
 
-## Goals
+This project aims to achieve two things:
 
-This project aims to achieve three things:
+- Reduce or eliminate the cost to deploy web applications for development or local use purposes
+- Reduce or eliminate the time and knowledge required to perform the above applications
 
-- Reduce or eliminate the cost to deploy projects (at a LAN level)
-- Reduce or eliminate the knowledge required to perform these deployments
-- Be a testbed for the development of my knowlege in new areas of computer science
+It is important to understand the types of deployments this project is aiming to support- we are not trying to replace the cloud for production applications in use by thousands of users daily around the world, or even to host a personal website visited by a few hundred people a month. Rather, this project is aiming to allow developers to host local APIs to power hobbyist IoT projects, or provide an easy means for a developer to test a project they are developing actually builds in isolation from the other dependencies on their system in preparation for deployment to a cloud environment.
 
-TODO: there is something to be said here about the types of deployments we are aiming to support (i.e. we are trying to support the hosting of websites or APIs locally so you can test them on different devices, or show them to friends, or power hobbyist projects, NOT support production scale deployments).
+To this end, the platform needs to be as easy to use as possible, and able to easily be installed and run on whatever hardware users have available. The vision is the platform is flexible enough to be installed on a modern desktop, old laptop, Raspberry Pi, and be flexible enough to handle any of these devices being present or absent from the network. If the platform is installed on a laptop and the laptop is taken out of the house, then it should be resillient enough to maintain its deployments, and able to easily reconnect the device when it returns to the network.
 
-TODO: I'm not quite sure how to structure this section, something about why rust, something about pre-existing hardware, idk
+### Related Work
+
+There are very few products which serve this niche.
+
+While there are plenty of cloud appllication deployment platforms, (AWS Elastic Beanstalk, Azure's App Service Deployment Center, etc.) they have the same problems of cloud solutions in general- namely the cost and knowledge barriers.
+
+While there are locally-hosted options (namely Docker for local deployments, and Kubernetes for wholistic application deployment and management), Docker is not sufficiently flexible, as it is isoalted to a single device, and while it is easier to manage than manual dependency management, still has significant management overhead. Kubernetes, on the other hand, is infamous for developer's lack of ability to understand what it is or how to use it, which speaks to the knowledge overhead involved in effectively managing a Kubernetes cluster.
 
 ### A Note on Scope of Work and Project Direction
 
-While cost and complexity form the backbone of the motivation for the project, the primary motivation for its design and development revolve around the desire to develop knowledge in new areas of computer science. While it would have been trivial for me to use a group of technologies I was more comfortable with, or ignore reliability for what is fundamentally a development (and therefore not in need of stability) environment, I chose to focus on these areas of development. Though decisions made as a result of this third goal do not impact the first two in terms of the platform, it did significantly reduce the set of features I would have otherwise been able to build into the platform, and did inform some of the design decisions I made for the platform. I will endevor to make a note of these points shortcomings in the project as we cover its main systems.
+While cost and complexity form the backbone of the motivation for the project, the primary motivation for its design and development revolve around the desire to develop knowledge in new areas of computer science. While it would have been (relatively) trivial to implement this system in a technology stack in which I have development experience, or ignore reliability for what is fundamentally a development (and therefore not truly in need of stability) environment, I chose to focus on these areas of development as a matter of personal growth. Though decisions made as a result of this motivation do not impact my ability to accomplish the platform's primary goals, it did significantly reduce the set of features I would have otherwise been able to build into the platform, and did inform some of the design decisions I made in its development. I will endevor to make a note of these shortcomings in the project as I cover its main systems.
 
-## Platform Overview
+## II. Platform Overview
 
 The Kraken App Deployment Platform is a collection of devices all running the Kraken agent. The platform is made up of a single Orchestration node, and 0+ Worker nodes (although technically all nodes are both Orchestrators and Workers, see [Executors](###Executors) for more details). Users of the platform are able to access a web interface which allows them to monitor all devices (nodes) which are running the agent. From this interface, they can also request the deployment of an application to the platform via a Github Url. This will trigger the platform's orchestrator to validate the deployment, and select a worker to handle the deployment. Users can then use the interface to monitor their deployment- accessing information like deployment status, resource usage statistics, application logs, and request updates or destruction of a deployment.
 
@@ -60,7 +65,7 @@ That being said, the platform is highly extensible. To add additional deployment
 
 Due to the fact that it is designed to support primarilly API deployments, the platform will simply expose a single internal docker port externally to your machine. Ephemeral Tasks are technically supported, though their behavior has not been extensively validated. Other deployment types (databases, complex deployments utilizing docker networking features, etc) are not officially supported, though may be possible via the custom Dockerfile feature.
 
-## Usage
+## III. Usage
 
 This section will cover the important pieces needed to use the platform.
 
@@ -104,6 +109,49 @@ We provide two different installation options (the `installer-compile` and `inst
 
 The most detailed and up to date information about installation is available [here](./Installation.md).
 
+### Compilation
+
+Due to the low resources of a rasbperry pi, compiling this project natively can take hours, For this reason, I have configured this project to support cross-compilation for Raspberry Pi. By making use of rust's tooling, this process is actually fairly straightforward.
+
+First, you must define the relevant target in your `.cargo/config.toml` file:
+
+```toml
+[build]
+
+# Pi 2/3/4
+[target.armv7-unknown-linux-gnueabihf]
+linker = "arm-linux-gnueabihf-gcc"
+```
+
+Then you install the relevant linker to your system you are compiling from:
+
+```bash
+sudo apt install arm-linux-gnueabihf-gcc
+```
+
+To compile for RPi, we must also bundle in openssl. Luckily with Cargo's `features` feature, this becomes trivial. We first add `openssl` as an optional dependency to our `Config.toml`:
+
+```toml
+openssl = { version = '0.10', optional = true }
+```
+
+and then we add the openssl feature to our `Config.toml`
+
+```toml
+[features]
+vendored-openssl = ["openssl/vendored"]
+```
+
+Then, we can simply compile our project as follows:
+
+```bash
+cargo build --release --target armv7-unknown-linux-gnueabihf --features vendored-openssl
+# or for this project, just use the shortcut
+make build-pi
+```
+
+This will generate an executable of about 20MB, which can simply be uploaded to Github as a new release, which will then be downloaded by `installer-pi.sh`.
+
 ### Application Onboarding
 
 Getting your application onboarded to the platform requires only a few simple steps. First, you must make sure you have a running version of the platform on your LAN. You can either follow the [installation steps above](###Installation), or simply clone the project and run the platform temporarily.
@@ -129,7 +177,7 @@ From there, you simply need to access the `deployments` tab of the interface, an
 
 ![Deployment UI Example](./images/deployment_url_and_branch_ok.png)
 
-## Platform/Program Systems
+## IV. Platform Systems
 
 This section will cover the main systems involved in the platform. The figure below outlines the major responsibilities of a node on a platform.
 
@@ -479,49 +527,6 @@ The platform UI is relatively simple. It provides basic information about the pl
 The User Interface is a React-Typescript app. It used Urql as the GraphQL message broker, and Ant-Design as the UI library. It is not based on Create-React-App, instead using Parcel as the bundler.
 
 TODO link to these libraries
-
-### Compilation
-
-Due to the low resources of a rasbperry pi, compiling this project natively can take hours, For this reason, I have configured this project to support cross-compilation for Raspberry Pi. By making use of rust's tooling, this process is actually fairly straightforward.
-
-First, you must define the relevant target in your `.cargo/config.toml` file:
-
-```toml
-[build]
-
-# Pi 2/3/4
-[target.armv7-unknown-linux-gnueabihf]
-linker = "arm-linux-gnueabihf-gcc"
-```
-
-Then you install the relevant linker to your system you are compiling from:
-
-```bash
-sudo apt install arm-linux-gnueabihf-gcc
-```
-
-To compile for RPi, we must also bundle in openssl. Luckily with Cargo's `features` feature, this becomes trivial. We first add `openssl` as an optional dependency to our `Config.toml`:
-
-```toml
-openssl = { version = '0.10', optional = true }
-```
-
-and then we add the openssl feature to our `Config.toml`
-
-```toml
-[features]
-vendored-openssl = ["openssl/vendored"]
-```
-
-Then, we can simply compile our project as follows:
-
-```bash
-cargo build --release --target armv7-unknown-linux-gnueabihf --features vendored-openssl
-# or for this project, just use the shortcut
-make build-pi
-```
-
-This will generate an executable of about 20MB, which can simply be uploaded to Github as a new release, which will then be downloaded by `installer-pi.sh`.
 
 ## Artifacts
 

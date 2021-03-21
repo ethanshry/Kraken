@@ -33,7 +33,7 @@ reboot:
 report:
 	# assumes we have already done:
 	# pip install grip
-	grip documentation/Report.md
+	grip documentation/Report.md --export
 
 stop-env-commit:
 	git update-index --assume-unchanged .env
