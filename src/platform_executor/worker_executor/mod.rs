@@ -1,5 +1,5 @@
 //! Defines the Worker role, which handles core fucntionality of all devices on the platform
-use super::{DeploymentInfo, ExecutionFaliure, Executor, GenericNode, SetupFaliure, Task};
+use super::{DeploymentInfo, ExecutionFailure, Executor, GenericNode, SetupFailure, Task};
 use crate::docker::DockerBroker;
 use crate::gql_model::ApplicationStatus;
 use crate::rabbit::sysinfo_message::SysinfoMessage;

@@ -1,6 +1,6 @@
 //! Defines the Worker role, which handles core fucntionality of all devices on the platform
 use super::{
-    handle_deployment, kill_deployment, ExecutionFaliure, Executor, GenericNode, SetupFaliure,
+    handle_deployment, kill_deployment, ExecutionFailure, Executor, GenericNode, SetupFailure,
     Task, WorkerExecutor,
 };
 use crate::docker::DockerBroker;
@@ -18,14 +18,14 @@ use log::{info, warn};
 impl Executor for WorkerExecutor {
     /// The tasks associated with setting up this role.
     /// Workers are primarilly concerned with connecting to RabbitMQ, and establishing necesarry queues
-    async fn setup(&mut self, node: &mut GenericNode) -> Result<(), SetupFaliure> {
+    async fn setup(&mut self, node: &mut GenericNode) -> Result<(), SetupFailure> {
         clear_tmp();
 
         match Self::connect_to_rabbit_instance(&node.rabbit_addr).await {
             Ok(b) => node.broker = Some(b),
             Err(e) => {
                 warn!("{}", e);
-                return Err(SetupFaliure::NoRabbit);
+                return Err(SetupFailure::NoRabbit);
             }
         }
 
@@ -62,7 +62,7 @@ impl Executor for WorkerExecutor {
 
     /// Logic which should be executed every iteration
     /// Primarilly focused on handling deployment/kill/update requests, and processing logs
-    async fn execute(&mut self, node: &mut GenericNode) -> Result<(), ExecutionFaliure> {
+    async fn execute(&mut self, node: &mut GenericNode) -> Result<(), ExecutionFailure> {
         // Each execution will perform a single task in the work queue.
         // If more work needs to be completed, it will happen when execute is next called
 
@@ -107,7 +107,7 @@ impl Executor for WorkerExecutor {
                     }
                 }
             }
-            None => return Err(ExecutionFaliure::BadConsumer),
+            None => return Err(ExecutionFailure::BadConsumer),
         }
 
         let mut deployments_to_remove = vec![];

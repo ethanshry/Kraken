@@ -1,5 +1,5 @@
 //! Defines the Orchestrator role, which manages work for all devices on the platform
-use super::{ExecutionFaliure, Executor, GenericNode, SetupFaliure, Task};
+use super::{ExecutionFailure, Executor, GenericNode, SetupFailure, Task};
 use crate::gql_model::{Deployment, Service, ServiceStatus};
 use crate::gql_schema::{Mutation, Query};
 use crate::rabbit::RabbitBroker;
@@ -88,7 +88,7 @@ pub async fn validate_deployment(git_url: &str, git_branch: &str) -> Result<(Str
     }
 }
 
-/// Attempts to fetch the numeric priority for the specified system in an orchestration faliure
+/// Attempts to fetch the numeric priority for the specified system in an orchestration failure
 ///
 /// # Arguments
 ///

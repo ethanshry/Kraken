@@ -2,7 +2,7 @@
 //! Handles orchestration tasks, like queue establishment, coordination of deployments,
 //! rollover management, etc.
 
-use super::{ExecutionFaliure, Executor, GenericNode, OrchestrationExecutor, SetupFaliure, Task};
+use super::{ExecutionFailure, Executor, GenericNode, OrchestrationExecutor, SetupFailure, Task};
 use crate::gql_model::{ApplicationStatus, Node};
 use crate::rabbit::{
     work_request_message::{WorkRequestMessage, WorkRequestType},
@@ -20,7 +20,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 impl Executor for OrchestrationExecutor {
     /// The tasks associated with setting up this role.
     /// Workers are primarilly concerned with connecting to RabbitMQ, and establishing necesarry queues
-    async fn setup(&mut self, node: &mut GenericNode) -> Result<(), SetupFaliure> {
+    async fn setup(&mut self, node: &mut GenericNode) -> Result<(), SetupFailure> {
         OrchestrationExecutor::clean_docker().await;
         // If we are not the primary orchestrator, we don't need any further setup
         if self.rollover_priority != Some(0) {
@@ -56,7 +56,7 @@ impl Executor for OrchestrationExecutor {
 
         if let Err(e) = rabbit_res {
             error!("RabbitMQ Setup Failed with error: {}", e);
-            return Err(SetupFaliure::BadRabbit);
+            return Err(SetupFailure::BadRabbit);
         }
 
         // Try to make connection
@@ -64,7 +64,7 @@ impl Executor for OrchestrationExecutor {
             Ok(b) => node.broker = Some(b),
             Err(e) => {
                 warn!("{}", e);
-                return Err(SetupFaliure::NoRabbit);
+                return Err(SetupFailure::NoRabbit);
             }
         }
 
@@ -74,7 +74,7 @@ impl Executor for OrchestrationExecutor {
             .establish_rabbit_queues(&node.broker.as_ref().unwrap())
             .await
         {
-            return Err(SetupFaliure::BadRabbit);
+            return Err(SetupFailure::BadRabbit);
         }
 
         // Consume RabbitMQ Queues
@@ -101,7 +101,7 @@ impl Executor for OrchestrationExecutor {
 
     /// Logic which should be executed every iteration
     /// Primarilly focused on handling deployment/kill/update requests, and processing logs
-    async fn execute(&mut self, node: &mut GenericNode) -> Result<(), ExecutionFaliure> {
+    async fn execute(&mut self, node: &mut GenericNode) -> Result<(), ExecutionFailure> {
         // If we are not the primary orchestrator, just make sure the primary orchestrator is good
 
         if self.rollover_priority != Some(0) {
@@ -130,7 +130,7 @@ impl Executor for OrchestrationExecutor {
                             }
                         }
                     }
-                    return Err(ExecutionFaliure::NoOrchestrator);
+                    return Err(ExecutionFailure::NoOrchestrator);
                 }
                 Some(_) => {
                     if priority != self.rollover_priority {

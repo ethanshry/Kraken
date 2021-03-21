@@ -27,7 +27,7 @@ mod utils;
 use log::{error, info, warn};
 use platform_executor::{
     orchestration_executor::OrchestrationExecutor, worker_executor::WorkerExecutor,
-    ExecutionFaliure, Executor, GenericNode, NodeMode,
+    ExecutionFailure, Executor, GenericNode, NodeMode,
 };
 
 /// Sets up the orhcestration and worker executors for a system
@@ -133,16 +133,16 @@ async fn main() -> Result<(), ()> {
         // Try to do orchestration tasks
         match orchestrator.execute(&mut node).await {
             Ok(_) => {}
-            // In the case of faliures, figure out what kind of faliure it is and handle recovery appropriately
-            Err(faliure) => match faliure {
-                ExecutionFaliure::SigKill => {
-                    panic!("Orchestrator indicated a critical execution faliure, exiting")
+            // In the case of failures, figure out what kind of failure it is and handle recovery appropriately
+            Err(failure) => match failure {
+                ExecutionFailure::SigKill => {
+                    panic!("Orchestrator indicated a critical execution failure, exiting")
                 }
                 // If we can't connect to rabbitMQ as the orchestrator, something got very messed up with Docker.
                 // Only primary orchestrators will have this error, so safest bet is to just crash and let platform recover itself
-                ExecutionFaliure::BadConsumer => panic!("Worker could not connect to rabbit"),
+                ExecutionFailure::BadConsumer => panic!("Worker could not connect to rabbit"),
                 // Rollover Candidate cannot detect primary orchestrator, try to reconnect or roll over
-                ExecutionFaliure::NoOrchestrator => {
+                ExecutionFailure::NoOrchestrator => {
                     // Orchestrator could not be found
                     // If we are here, we are beyond trying to re-connect
                     warn!("Orchestrator lost");
@@ -190,13 +190,13 @@ async fn main() -> Result<(), ()> {
         };
         match worker.execute(&mut node).await {
             Ok(_) => {}
-            // In the case of faliure in worker tasks, we just want to fail. Typically errors here will be caught by the Orchestrator first
-            Err(faliure) => match faliure {
-                ExecutionFaliure::SigKill => {
-                    panic!("Worker indicated a critical execution faliure")
+            // In the case of failure in worker tasks, we just want to fail. Typically errors here will be caught by the Orchestrator first
+            Err(failure) => match failure {
+                ExecutionFailure::SigKill => {
+                    panic!("Worker indicated a critical execution failure")
                 }
-                ExecutionFaliure::BadConsumer => panic!("Worker could not connect to rabbit"),
-                ExecutionFaliure::NoOrchestrator => panic!(
+                ExecutionFailure::BadConsumer => panic!("Worker could not connect to rabbit"),
+                ExecutionFailure::NoOrchestrator => panic!(
                     "Worker failed execute due to lack of orchestrator, this should never occur"
                 ),
             },
