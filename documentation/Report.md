@@ -12,7 +12,7 @@ In [Section 1](##I.-Background), I will discuss background information for this 
 
 ### Motivation
 
-Over the past several years, the proliferation of cloud services like Amazon Web Services (AWS), Microsoft Azure, and Google Cloud Platform (GCP) have lowered the barrier to the deployment of publicly accesible web applications. Many companies have migrated their entire operations away from private data centers, and entirely rely on these cloud offerings. Despite this, the cost of these solutions remains high for hobbyist developers. Below is a breakdown of the cost of hardware costs for dedicated, non-preemptible servers on the top three cloud platforms:
+Over the past several years, the proliferation of cloud services like Amazon Web Services (AWS), Microsoft Azure, and Google Cloud Platform (GCP) have lowered the barrier to the deployment of publicly accessible web applications. Many companies have migrated their entire operations away from private data centers, and entirely rely on these cloud offerings. Despite this, the cost of these solutions remains high for hobbyist developers. Below is a breakdown of the cost of hardware costs for dedicated, non-preemptible servers on the top three cloud platforms:
 
 | Instance Name | Platform | Specs           | Price (dollars/month) |
 | ------------- | -------- | --------------- | --------------------- |
@@ -22,7 +22,7 @@ Over the past several years, the proliferation of cloud services like Amazon Web
 | A4 v2         | Azure    | 4 CPUs, 8GB RAM | $116.07               |
 | e2-standard-2 | GCP      | 2 CPUs, 8GB RAM | $48.91                |
 
-While there are cheaper instances available if you opt for premptible services, or reserve hardware for an extended period of time, each platform has tens or hundreds of possible server configurations, which can make simply determining the correct offering for your use case a hassle. Beyond the determination of appropriate server capacity, users of cloud platforms also need to dediccate time to develop their knowledge to make use of these servers- often requiring the management of Linux servers, firewalls, security group settings, remote code deployment pipelines, and the management of cloud platform credentials, to name a few things. While these are undoubtedly valuable in a production application, they can add unnecesarry complexity to any project, especially during the early stages of development when the focus could be on the development of project features.
+While there are cheaper instances available if you opt for preemptible services, or reserve hardware for an extended period of time, each platform has tens or hundreds of possible server configurations, which can make simply determining the correct offering for your use case a hassle. Beyond the determination of appropriate server capacity, users of cloud platforms also need to dedicate time to develop their knowledge to make use of these servers- often requiring the management of Linux servers, firewalls, security group settings, remote code deployment pipelines, and the management of cloud platform credentials, to name a few things. While these are undoubtedly valuable in a production application, they can add unnecessary complexity to any project, especially during the early stages of development when the focus could be on the development of project features.
 
 ### Goals
 
@@ -33,25 +33,34 @@ This project aims to achieve two things:
 
 It is important to understand the types of deployments this project is aiming to support- we are not trying to replace the cloud for production applications in use by thousands of users daily around the world, or even to host a personal website visited by a few hundred people a month. Rather, this project is aiming to allow developers to host local APIs to power hobbyist IoT projects, or provide an easy means for a developer to test a project they are developing actually builds in isolation from the other dependencies on their system in preparation for deployment to a cloud environment.
 
-To this end, the platform needs to be as easy to use as possible, and able to easily be installed and run on whatever hardware users have available. The vision is the platform is flexible enough to be installed on a modern desktop, old laptop, Raspberry Pi, and be flexible enough to handle any of these devices being present or absent from the network. If the platform is installed on a laptop and the laptop is taken out of the house, then it should be resillient enough to maintain its deployments, and able to easily reconnect the device when it returns to the network.
+To this end, the platform needs to be as easy to use as possible, and able to easily be installed and run on whatever hardware users have available. The vision is the platform is flexible enough to be installed on a modern desktop, old laptop, Raspberry Pi, and be flexible enough to handle any of these devices being present or absent from the network. If the platform is installed on a laptop and the laptop is taken out of the house, then it should be resilient enough to maintain its deployments, and able to easily reconnect the device when it returns to the network.
 
 ### Related Work
 
 There are very few products which serve this niche.
 
-While there are plenty of cloud appllication deployment platforms, (AWS Elastic Beanstalk, Azure's App Service Deployment Center, etc.) they have the same problems of cloud solutions in general- namely the cost and knowledge barriers.
+While there are plenty of cloud application deployment platforms, (AWS Elastic Beanstalk, Azure's App Service Deployment Center, etc.) they have the same problems of cloud solutions in general- namely the cost and knowledge barriers.
 
-While there are locally-hosted options (namely Docker for local deployments, and Kubernetes for wholistic application deployment and management), Docker is not sufficiently flexible, as it is isoalted to a single device, and while it is easier to manage than manual dependency management, still has significant management overhead. Kubernetes, on the other hand, is infamous for developer's lack of ability to understand what it is or how to use it, which speaks to the knowledge overhead involved in effectively managing a Kubernetes cluster.
+While there are locally-hosted options (namely Docker for local deployments, and Kubernetes for wholistic application deployment and management), Docker is not sufficiently flexible, as it is isolated to a single device, and while it is easier to manage than manual dependency management, still has significant management overhead. Kubernetes, on the other hand, is infamous for developer's lack of ability to understand what it is or how to use it, which speaks to the knowledge overhead involved in effectively managing a Kubernetes cluster.
 
 ### A Note on Scope of Work and Project Direction
 
-While cost and complexity form the backbone of the motivation for the project, the primary motivation for its design and development revolve around the desire to develop knowledge in new areas of computer science. While it would have been (relatively) trivial to implement this system in a technology stack in which I have development experience, or ignore reliability for what is fundamentally a development (and therefore not truly in need of stability) environment, I chose to focus on these areas of development as a matter of personal growth. Though decisions made as a result of this motivation do not impact my ability to accomplish the platform's primary goals, it did significantly reduce the set of features I would have otherwise been able to build into the platform, and did inform some of the design decisions I made in its development. I will endevor to make a note of these shortcomings in the project as I cover its main systems.
+While cost and complexity form the backbone of the motivation for the project, the primary motivation for its design and development revolve around the desire to develop knowledge in new areas of computer science. While it would have been (relatively) trivial to implement this system in a technology stack in which I have development experience, or ignore reliability for what is fundamentally a development (and therefore not truly in need of stability) environment, I chose to focus on these areas of development as a matter of personal growth. Though decisions made as a result of this motivation do not impact my ability to accomplish the platform's primary goals, it did significantly reduce the set of features I would have otherwise been able to build into the platform, and did inform some of the design decisions I made in its development. I will endeavor to make a note of these shortcomings in the project as I cover its main systems.
 
 ## II. Platform Overview
 
-The Kraken App Deployment Platform is a collection of devices all running the Kraken agent. The platform is made up of a single Orchestration node, and 0+ Worker nodes (although technically all nodes are both Orchestrators and Workers, see [Executors](###Executors) for more details). Users of the platform are able to access a web interface which allows them to monitor all devices (nodes) which are running the agent. From this interface, they can also request the deployment of an application to the platform via a Github Url. This will trigger the platform's orchestrator to validate the deployment, and select a worker to handle the deployment. Users can then use the interface to monitor their deployment- accessing information like deployment status, resource usage statistics, application logs, and request updates or destruction of a deployment.
+The Kraken App Deployment Platform is a collection of devices running the Kraken service. The platform is made up of a single Orchestration node, and 0+ Worker nodes (although technically all nodes are both Orchestrators and Workers, see [Executors](###Executors) for more details). Users of the platform are able to access a web interface which allows them to monitor all devices (nodes) which are running the service. From this interface, they can also request the deployment of an application to the platform via a Github Url. This will trigger the platform's orchestrator to validate the deployment, and select a worker to handle the deployment via Docker. Users can then use the interface to monitor their deployment- accessing information like deployment status, resource usage statistics, application logs, and request updates or destruction of a deployment.
 
-TODO platform architecture diagram
+| Technology       | Purpose                                                                          |
+| ---------------- | -------------------------------------------------------------------------------- |
+| Rust             | Language used for the backend development of the platform                        |
+| Tokio            | Library used to provide the backend with an asynchronous runtime / green threads |
+| Rocket           | Library used for the backend REST API                                            |
+| GraphQL          | Used to communicate between the UI and the Backend                               |
+| RabbitMQ         | Used to communicate between nodes                                                |
+| Docker           | Used to manage Deployments/Containers                                            |
+| Systemd          | Used to manage the running and updating of the service after installation        |
+| React/Typescript | Used for UI development                                                          |
 
 ### Platform Capabilities
 
@@ -59,19 +68,22 @@ The Platform supports the following deployment types:
 
 - NodeJS Applications
 - Python 3.6 Applications
-- Static HTML Site Deployments
+- Static HTML Sites
+- Custom Dockerfile Deployments
 
-That being said, the platform is highly extensible. To add additional deployment types, all that is required is a dockerfile and a minor (potentially single line) code addition. Additionally, because the platform uses docker under the hood to manage deployments, you can also ship a custom dockerfile with your application, and run whatever deployment you want.
+That being said, the platform is highly extensible. To add additional deployment types, all that is required is a dockerfile and a minor (potentially single line) code addition. Additionally, because the platform uses docker under the hood to manage deployments, you can also ship a custom dockerfile with your application, and run whatever deployment type you want.
 
-Due to the fact that it is designed to support primarilly API deployments, the platform will simply expose a single internal docker port externally to your machine. Ephemeral Tasks are technically supported, though their behavior has not been extensively validated. Other deployment types (databases, complex deployments utilizing docker networking features, etc) are not officially supported, though may be possible via the custom Dockerfile feature.
+When a deployment is made, the UI provides insight into the state of that deployment. You can track its progress through the deployment process, as well as access to container usage information like CPU and RAM usage. Additionally the UI provides easy access to application logs for complete application monitoring.
+
+Deployments can be made from any branch in a github repository, so long as that branch has the required configuration file. Once a deployment has been made, it is a single button click to re-deploy the application from the same git branch, or to shut down the deployment.
+
+Due to the fact that it is designed to support primarily API deployments, the platform will simply expose a single internal docker port externally to your machine/LAN. Ephemeral Tasks are technically supported, though their behavior has not been extensively validated. Other deployment types (databases, complex deployments utilizing docker networking features, etc) are not officially supported, though may be possible via the custom Dockerfile feature.
 
 ## III. Usage
 
-This section will cover the important pieces needed to use the platform.
-
 ### Requirements
 
-The platform relies on only a few external dependencies.
+The platform relies on a few external dependencies.
 
 | Dependency     | Reason/Usage                                                                                                                                                                                                                                                                       |
 | -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -86,7 +98,7 @@ All of the required packages will be installed as part of the installation path 
 
 ### Installation
 
-The goal of the installation process is to be as simple as possible for users. Therefore, it only takes the execution of a single script to get a system set up for use by the app deployment platform.
+The goal of the installation process is to be as simple as possible for users. Therefore, it only takes the execution of a single script to get a system set up for use by the Kraken service.
 
 The platform can be installed to your device through one of three installation scripts:
 
@@ -98,20 +110,18 @@ The platform can be installed to your device through one of three installation s
 
 Running an installer performs the following sequence of tasks:
 
-```bash
-# installation of relevant peer dependencies
-# configuration of those peer dependencies (i.e. configuration of docker user groups)
-# setup of kraken directory, and either compilation of the platform or downloading a compiled executable
-# establishment of the kraken.service, which will run a script to auto-update and auto-run the platform on boot
-```
+- installation of relevant peer dependencies
+- configuration of those peer dependencies (i.e. configuration of docker user groups)
+- setup of kraken directory, and either compilation of the platform or downloading a compiled executable
+- establishment of the kraken.service, which will run a script to auto-update and auto-run the platform on boot
 
-We provide two different installation options (the `installer-compile` and `installer-pi`) since compiling a rust project (or this project in particualr) requires significant computing resources, as well as openssl, which does not come built in with Raspbian. As a result, prior to distributing a pre-compiled binary with openssl built in, compiling on a Raspberry Pi 3 B+ took upwards of an hour with active cooling, as well as additional configuration to get openssl installed. Now, Raspberry Pis simply need to download a ~20MB binary. See [Compilation](###Compilation) for more information about how Kraken achieves low-effort cross compilation.
+There are two different installation options (the `installer-compile` and `installer-pi`) since compiling a rust project (or this project in particular) requires significant computing resources, as well as openssl, which does not come built in with Raspbian. As a result, prior to distributing a pre-compiled binary with openssl built in, compiling on a Raspberry Pi 3 B+ took upwards of an hour with active cooling, as well as additional configuration to get openssl installed. Now, Raspberry Pis simply need to download a ~20MB binary (this is unoptimized for size, Rust is notorious for having large binary sizes prior to optimization). See [Compilation](###Compilation) for more information about how Kraken achieves low-effort cross compilation.
 
 The most detailed and up to date information about installation is available [here](./Installation.md).
 
 ### Compilation
 
-Due to the low resources of a rasbperry pi, compiling this project natively can take hours, For this reason, I have configured this project to support cross-compilation for Raspberry Pi. By making use of rust's tooling, this process is actually fairly straightforward.
+Due to the low resources of a raspberry pi, compiling this project natively can take hours. For this reason, I have configured this project to support cross-compilation for Raspberry Pi. By making use of Rust's tooling, this process is actually fairly straightforward.
 
 First, you must define the relevant target in your `.cargo/config.toml` file:
 
@@ -150,13 +160,13 @@ cargo build --release --target armv7-unknown-linux-gnueabihf --features vendored
 make build-pi
 ```
 
-This will generate an executable of about 20MB, which can simply be uploaded to Github as a new release, which will then be downloaded by `installer-pi.sh`.
+This will generate an executable, which can simply be uploaded to Github as a new release. The most recent release will be downloaded by `installer-pi.sh` as part of the installation process, or on each boot if a newer binary is available.
 
 ### Application Onboarding
 
-Getting your application onboarded to the platform requires only a few simple steps. First, you must make sure you have a running version of the platform on your LAN. You can either follow the [installation steps above](###Installation), or simply clone the project and run the platform temporarily.
+Onboarding an application to the platform requires only a few simple steps. First, you must have a running version of the platform on your LAN. You can either follow the [installation steps above](###Installation), or simply clone the project and run the platform temporarily.
 
-Then you must configure your application to be run on the platform. To do this, you must simply create a `shipwreck.toml` file in the root of your repository, in the branch you want to be deployed to the platform. An example might look like the following:
+Then you must configure your application to be run on the platform. To do this, you must create a `shipwreck.toml` file in the root directory of your repository, in the branch you want to be deployed to the platform. An example might look like the following:
 
 ```toml
 [app]
@@ -173,7 +183,7 @@ run="npm start"
 
 Components of the `app` section describe metadata about the application, while fields of the `config` section describe important configuration aspects of your deployment. More details about these fields are available on the `info` screen in the platform interface, and the config field format is implemented in the `crate::deployment::shipwreck` module.
 
-From there, you simply need to access the `deployments` tab of the interface, and select the appropriate URL and branch for your deployment. This should enable the `Create Deployment` button, from which you can spin up your deployment.
+From there, you simply need to access the `deployments` tab of the interface, and select the appropriate URL and branch for your deployment. This should enable the `Create Deployment` button, which will delegate the deployment to a worker on the platform.
 
 ![Deployment UI Example](./images/deployment_url_and_branch_ok.png)
 
@@ -183,7 +193,7 @@ This section will cover the main systems involved in the platform. The figure be
 
 ![Node Components](./images/node_components_diagram.png)
 
-As you can see, each node has two different `Executors` running at any given time. These are oulined more in the [Executors](###Executors) section, however an executor is a way to differentiate groupd of functionality. There are effectively two types of nodes on the platform- a single orchestrator, and many workers. Their responsibilities are covered in the [Workers](###Workers), [Orchestrators](###Orchestrators), and [Orchestration Rollover Candidates](###Orchestration-Rollover-Candidates) sections below.
+As you can see, each node has two different `Executors` running at any given time. These are outlined more in the [Executors](###Executors) section, however an executor is a way to differentiate groups of functionality. There are effectively two types of nodes on the platform- a single orchestrator, and many workers. Their responsibilities are covered in the [Workers](###Workers), [Orchestrators](###Orchestrators), and [Orchestration Rollover Candidates](###Orchestration-Rollover-Candidates) sections below.
 
 The way the various pieces of the platform communicate with each other is outlined in [Communication](###Communication).
 
@@ -224,41 +234,38 @@ async fn main() -> Result<(), ()> {
     // The main execution loop
     loop {
         // Each node has an orchestration executor and a worker executor
-        match orchestrator.execute(&mut node).await {
-            Ok(_) => {}
-            Err(faliure) => match faliure {
-                // handle orchestrator faliures
+        match orchestrator.execute().await {
+            Ok() => {}
+            Err(failure) => match failure {
+                // handle orchestrator failures
                 // this might involve orchestration rollover
                 // ...
             },
         };
-        match worker.execute(&mut node).await {
-            Ok(_) => {}
+        match worker.execute().await {
+            Ok() => {}
             Err() => {
-                // handle various forms of ExecutionFaliure
+                // handle various forms of ExecutionFailure
                 // ...
             }
         };
-        sleep(Duration::from_millis(500));
     }
 }
 
 ```
 
-You will note the use of a sleep at the end of this execution loop. This is simply to prevent the platform from performing hundreds of unnecesarry iterations if it has no work to do. While delta timing here might be preferred in a production environment and needed to gaurantee as quick as possible response times, in my experience this method has very little impact on platform responsiveness, and is marginally simpler, so I didn't worry about it.
-
 ### Executors
 
 There are a variety of tasks a `Node` on the platform must perform. These broadly fall into two categories: features required of a `Worker`, and features required of an `Orchestrator`. While the specific responsibilities for each role will be outlined in the [Workers](###Workers), [Orchestrators](###Orchestrators), and [Orchestration Rollover Candidates](###Orchestration-Rollover-Candidates) sections, all of these roles follow the same `Executor` trait.
 
-An executor is simply a struct which implements two methods: setup and execute. `setup` is called once to set up the node, and `execute` will then be called repeatedly until the executor crashes or the program terminates. Both of these methods also accept a `GenericNode`, which allows different executors to share common data, and return the same `SetupFaliure` and `ExecutionFaliure` responses across executors. This allows us to isolate different funcionality to specific executors, while having a unified way to interface with them. As a result of this design, it would be trivial to add another executor to extend the functionality of our `Node` without impacting existing executors, or running a `Node` which is only an `Orchestrator` or `Worker` without being both.
+An executor is simply a struct which implements two methods: setup and execute. `setup` is called once to set up the node, and `execute` will then be called repeatedly until the executor crashes or the program terminates. Both of these methods also accept a `GenericNode`, which allows different executors to share common data, and return the same `SetupFailure` and `ExecutionFailure` responses across executors. This allows us to isolate different functionality to specific executors, while having a single API to interface with them. As a result of this design, it would be trivial to add another executor to extend the functionality of our `Node` without impacting existing executors, or running a `Node` which is only has an `Orchestrator` or a `Worker` without being both.
 
 ```rust
 pub trait Executor {
     /// Is called once to set up this node
-    async fn setup(&mut self, node: &mut GenericNode) -> Result<(), SetupFaliure>;
+    async fn setup(&mut self, node: &mut GenericNode) -> Result<(), SetupFailure>;
     /// Is called repeatedly after setup has terminated
-    async fn execute(&mut self, node: &mut GenericNode) -> Result<(), ExecutionFaliure>;
+    async fn execute(&mut self, node: &mut GenericNode) -> Result<(), ExecutionFailure>;
 }
 
 pub struct GenericNode {
@@ -281,11 +288,11 @@ pub struct WorkerExecutor {
 }
 ```
 
-A `WorkerExecutor` is relatively simple- it has a handle to a RabbitMQ Queue, `work_queue_consumer`, over which is recieves `WorkRequestMessages`. It has a list of deployments it monitors, `deployments`, and it has a handle to other tasks it is monitoring, `tasks`.
+A `WorkerExecutor` is relatively simple- it has a handle to a RabbitMQ Queue, `work_queue_consumer`, over which it receives `WorkRequestMessages`. It has a list of deployments it monitors, `deployments`, and it has a handle to other tasks it is monitoring, `tasks`.
 
 When setup is called on the `WorkerExecutor`, it connects to RabbitMQ, begins broadcasting the Node status to the orchestrator, and establishes the consumer for the `work_queue_consumer`.
 
-On a call to `execute`, the worker does two things: first, it checks to see if it has an outstanding `WorkRequestMessage`. This message is passed to the worker via the RabbitMQ consumer and is extensible, but currently only supports two request types: `RequestDeployment` and `CancelDeployment`. The request contains all the necesarry information for the Worker to perform the requested task. Finally, the `Worker` looks at all its active deployments and broadcasts any relevant log messages to the relevant RabbitMQ queue. More information about how the `RequestDeployment` process works can be found in [Deployments](###Deployments)
+On a call to `execute`, the worker does two things: first, it checks to see if it has an outstanding `WorkRequestMessage`. This message is passed to the worker via the RabbitMQ consumer and is extensible, but currently only supports two request types: `RequestDeployment` and `CancelDeployment`. The request contains all the necessary information for the Worker to perform the requested task. Finally, the `Worker` looks at all its active deployments and broadcasts any relevant log messages to the relevant RabbitMQ queue. More information about how the `RequestDeployment` process works can be found in [Deployments](###Deployments)
 
 Below you can find a simplified version of the code which implements the `Executor` trait for the `WorkerExecutor`.
 
@@ -293,7 +300,7 @@ Below you can find a simplified version of the code which implements the `Execut
 
 impl Executor for WorkerExecutor {
 
-    async fn setup(..) -> Result<(), SetupFaliure> {
+    async fn setup(..) -> Result<(), SetupFailure> {
         // connect to rabbitMQ
         connect_to_rabbit_instance(&node.rabbit_addr).await;
 
@@ -304,7 +311,7 @@ impl Executor for WorkerExecutor {
         broker.consume_queue_incr(&node.system_id).await
     }
 
-    async fn execute(..) -> Result<(), ExecutionFaliure> {
+    async fn execute(..) -> Result<(), ExecutionFailure> {
         // if we have a WorkRequestMessage, then execute it
         if let Some(data) = try_fetch_consumer_item(&mut self.work_queue_consumer).await {
             let (_, task) = WorkRequestMessage::deconstruct_message(&data);
@@ -319,7 +326,7 @@ impl Executor for WorkerExecutor {
             }
         }
 
-        for (index, d) in self.deployments.iter_mut().enumerate() {
+        for (index, d) in self.deployments {
 
             let logs = docker.get_logs(&d.deployment_id).await;
             if !logs.is_empty() {
@@ -338,7 +345,7 @@ impl Executor for WorkerExecutor {
 
 ### Orchestrators
 
-An Orchestrator, or more precisely an `OrchestratorExecutor`, is more complex. It handles all tasks in relation to coordinating deployments- this includes recieving requests for deployments/cancellations from the REST API, validating they are deployable, and distributing requests to nodes. Additionally the orchestrator is responsible for deploying and respoinding to requests from the REST and GraphQL APIs, deploying the RabbitMQ instance, storing application logs, and otherwise managing the platform.
+An Orchestrator, or more precisely an `OrchestratorExecutor`, is more complex. It handles all tasks in relation to coordinating deployments- this includes receiving requests for deployments/cancellations from the REST API, validating they are deployable, and distributing requests to nodes. Additionally the orchestrator is responsible for deploying and responding to requests from the REST and GraphQL APIs, deploying the RabbitMQ instance, storing application logs, and otherwise managing the platform.
 
 ```rust
 pub struct OrchestrationExecutor {
@@ -346,27 +353,28 @@ pub struct OrchestrationExecutor {
     api_server: Option<tokio::task::JoinHandle<()>>,
     /// A reference to the Database containing information about the platform
     pub db_ref: Arc<Mutex<Database>>,
-    /// The rank of this executor for rollover. 0 implies this is the active orchestrator, None implies none is assigned.
+    /// The rank of this executor for rollover.
+    /// 0 implies this is the active orchestrator, None implies no priority is assigned.
     /// Otherwise is treated as lowest number is highest priority
     pub rollover_priority: Option<u8>,
     pub queue_consumers: Vec<Task>,
 }
 ```
 
-The most important piece of the `OrchestrationExecutor` is the `db_ref`. This is a thread-safe reference to a `Database`. See more information in [In-Memory State Storage](###In-Memory-State-Storage) and [Communication](###Communication) for how this works, but the general idea is the `api_server` has a reference to the database, and so is able to create requests there for deployments. The Orchestrator is then able to read the `Database` record for Nodes and Deployments, and take any actions necesarry based on their states.
+The most important piece of the `OrchestrationExecutor` is the `db_ref`. This is a thread-safe reference to a `Database`. See more information in [In-Memory State Storage](###In-Memory-State-Storage) and [Communication](###Communication) for how this works, but the general idea is the `api_server` has a reference to the database, and so is able to create requests there for deployments. The Orchestrator is then able to read the `Database` record for Nodes and Deployments, and take any actions necessary based on their states.
 
 When setup is called on the `OrchestrationExecutor`, it fetches the most recent version of the `Kraken-UI` interface and compiles it, spins up a `RabbitMQ` server, connects to it, and sets up threads to consume the various status queues. Finally it establishes the REST and GraphQL APIs which serve the UI and Platform Data.
 
-On a call to `execute`, the Orchestrator does two things: first, it checks all available deployment statuses to see if there is any action to be taken. For example, a deployment might be asking to be updated, destroyed, or created. The Orchestrator will take any action necesarry for those deployments. Then, the Orchestrator will check all the `Nodes` it knows about to ensure they have recently reported a status. If they haven't, it will re-deploy any deployments owned by that Node, and otherwise remove it from the platform.
+On a call to `execute`, the Orchestrator does two things: first, it checks all available deployment statuses to see if there is any action to be taken. For example, a deployment might be asking to be updated, destroyed, or created. The Orchestrator will take any action necessary for those deployments. Then, the Orchestrator will check all the `Nodes` it knows about to ensure they have recently reported a status. If they haven't, it will re-deploy any deployments owned by that Node, and otherwise remove it from the platform.
 
 Below you can find a simplified version of the code which implements the `Executor` trait for the `OrchestrationExecutor`.
 
 ```rust
 
 impl Executor for OrchestrationExecutor {
-    async fn setup(..) -> Result<(), SetupFaliure> {
+    async fn setup(..) -> Result<(), SetupFailure> {
 
-        // Setup RabbmitMQ server and Fetch and compile Kraken-UI
+        // Setup RabbitMQ server and Fetch and compile Kraken-UI
         let ui = OrchestrationExecutor::fetch_ui();
         let rabbit = OrchestrationExecutor::deploy_rabbit_instance();
 
@@ -379,13 +387,13 @@ impl Executor for OrchestrationExecutor {
         // Queue for information about Deployment statuses
         self.get_deployment_consumer();
 
-        // Queue for recieving Deployment Logs
+        // Queue for receiving Deployment Logs
         self.get_log_consumer();
 
         OrchestrationExecutor::create_api_server();
     }
 
-    async fn execute(..) -> Result<(), ExecutionFaliure> {
+    async fn execute(..) -> Result<(), ExecutionFailure> {
 
         let deployments = db.get_deployments();
 
@@ -441,11 +449,11 @@ Though technically this role falls under the `OrchestrationExecutor` umbrella, a
 ```rust
 
 impl Executor for OrchestrationExecutor {
-    async fn setup(..) -> Result<(), SetupFaliure> {
-        // We are not the primary orchestrator, so no setup is necesarry
+    async fn setup(..) -> Result<(), SetupFailure> {
+        // We are not the primary orchestrator, so no setup is necessary
     }
 
-    async fn execute(..) -> Result<(), ExecutionFaliure> {
+    async fn execute(..) -> Result<(), ExecutionFailure> {
 
         let priority = get_rollover_priority(..).await;
         match priority {
@@ -456,7 +464,7 @@ impl Executor for OrchestrationExecutor {
             }
             Some(_) => {
                 if self.rollover_priority == Some(1) {
-                    // We are the primary rollover canidate, so we need to be backing up
+                    // We are the primary rollover candidate, so we need to be backing up
                     // data from the primary
                     let database_data = get_primary_orchestrator_db_data(..);
                     db.clear();
@@ -480,9 +488,9 @@ The most complicated portion of this project is figuring out how all the differe
 
 ![Platform Communication](./images/platform_communication_diagram.png)
 
-The first thing to note is the way external users interface with the platform. The User Interface only communicates with the platform via the GraphQL API. This communication method was choses so as to maximuze flexibility in development- by using GraphQL, it is very easy to modify the schema of the requests on-the-fly, which sped up development significantly, and allows for future expansibility. The GraphQL API (which really rests on top of a standard REST API) has a thread-safe reference to the In-Memory State Storage (or the `Database`) that is owned by the `OrchestrationExecutor`. All the data to power the API comes from this database, and any user requests which are made to the platform will be created in this database. The only exception to this is the delivery of UI files (and application log files), which come from the REST API.
+The first thing to note is the way external users interface with the platform. The User Interface only communicates with the platform via the GraphQL API. This communication method was chosen so as to maximize flexibility in development- by using GraphQL, it is very easy to modify the schema of the requests on-the-fly, which sped up development significantly, and allows for future expansibility. The GraphQL API (which really rests on top of a standard REST API) has a thread-safe reference to the In-Memory State Storage (or the `Database`) that is owned by the `OrchestrationExecutor`. All the data to power the API comes from this database, and any user requests which are made to the platform will be created in this database. The only exception to this is the delivery of UI files (and application log files), which come from the REST API.
 
-This theme- the ownership of a thread-safe reference to the `OrchestrationExecutor`'s database, is common across all other parts of the platform as well. The `OrchestrationExecutor` only monitors the database to determine which tasks to perform. The different RabbitMQ queue consumers the database own all have a reference to this database as well, so any inbound to the `OrchestrationExecutor` comes through the database. The only exception to this is in Orchestration Rollover Candidates, which monitor a route on the REST API to ensure the primary orchestrator is still active, and to recieve their backup data.
+This theme- the ownership of a thread-safe reference to the `OrchestrationExecutor`'s database, is common across all other parts of the platform as well. The `OrchestrationExecutor` only monitors the database to determine which tasks to perform. The different RabbitMQ queue consumers the database own all have a reference to this database as well, so any inbound to the `OrchestrationExecutor` comes through the database. The only exception to this is in Orchestration Rollover Candidates, which monitor a route on the REST API to ensure the primary orchestrator is still active, and to receive their backup data.
 
 When an `OrchestrationExecutor` has a need to communicate with a `WorkerExecutor` (in either direction), that communication will travel through the RabbitMQ instance. This includes the following messages:
 
@@ -508,13 +516,11 @@ pub struct Database {
 }
 ```
 
-Anything which wants to communicate inbound to the `OrchestrationExecutor` (i.e. RabbitMQ Consumers and the REST/GraphQL APIs) has a thread-safe reference to this database. This model is actually very similiar to the implementation of the [mini-redis](https://github.com/tokio-rs/mini-redis) crate.
-
-TODO do I have more to say about this?
+Anything which wants to communicate inbound to the `OrchestrationExecutor` (i.e. RabbitMQ Consumers and the REST/GraphQL APIs) has a thread-safe reference to this database. This model is actually very similar to the implementation of the [mini-redis](https://github.com/tokio-rs/mini-redis) crate. This design allows the `OrchestrationExecutor::execute` method to simply iterate over information in the database, instead of looking for messages in many different RabbitMQ queues, or performing many operations out-of-band as the different messages come in from different sources. While this does potentially reduce performance, the simplicity and ease of debugging gained by having a single execution loop is worth the minor sacrifice.
 
 ### Rollover
 
-The rollover process for the platform is actually relatively straightforward. All rollover activities are handled by the `OrchestrationExecutor` and the `rollover_priority`. In the case that a node which is not the Orhcestrator (that is to say, with a `rollover_priority != Some(0)`) is unable to access the `/health/<requester_node_id>` REST API endpoint, that executor will go into an exponential backoff period attempting to access that route. That is to give the primary orchestrator time to recover from whatever service interruption it is experiencing. If after that period of backoff (~10s) the secondary orchestrator is unable to establish a connection, it will return an `ExecutionFaliure::NoOrchestrator` from it's `execute` method call. When this response is recieved by the main application loop, the orchestrator will then do one of two things. If we are the primary rollover candidate (i.e. `rollover_priority != Some(1)`) then we will alter our rollover priority to be `Some(0)` and establish ourselves as the primary orchestrator of a new platform. All other nodes will instead enter another period of exponential backoff (~2m) waiting to connect to the new platform.
+The rollover process for the platform is actually relatively straightforward. All rollover activities are handled by the `OrchestrationExecutor` and the `rollover_priority`. In the case that a node which is not the Orchestrator (that is to say, with a `rollover_priority != Some(0)`) is unable to access the `/health/<requester_node_id>` REST API endpoint, that executor will go into an exponential backoff period attempting to access that route. That is to give the primary orchestrator time to recover from whatever service interruption it is experiencing. If after that period of backoff (~10s) the secondary orchestrator is unable to establish a connection, it will return an `ExecutionFailure::NoOrchestrator` from it's `execute` method call. When this response is received by the main application loop, the orchestrator will then do one of two things. If we are the primary rollover candidate (i.e. `rollover_priority != Some(1)`) then we will alter our rollover priority to be `Some(0)` and establish ourselves as the primary orchestrator of a new platform. All other nodes will instead enter another period of exponential backoff (~2m) waiting to connect to the new platform.
 
 In the case of rollover, the new orchestrator will be operating on the most recently saved `Database` backup. Since the platform was designed as a development environment, we do not make any effort to re-attach to existing deployments. Instead, we send a signal to all nodes to spin down their deployments, and the primary orchestrator will treat all deployments as though they were newly requested.
 
@@ -522,11 +528,19 @@ In the case of rollover, the new orchestrator will be operating on the most rece
 
 The platform UI is relatively simple. It provides basic information about the platform, including a brief tutorial for onboarding. It has a page to monitor the various nodes attached to the platform, and a place to request and monitor the various deployments on the platform.
 
-![UI Example](./images/ui_full_example.png)
+The User Interface is a React-Typescript app. It used Urql as the GraphQL API interface, and Ant-Design as the UI library. It is not based on Create-React-App, instead using Parcel as the bundler.
 
-The User Interface is a React-Typescript app. It used Urql as the GraphQL message broker, and Ant-Design as the UI library. It is not based on Create-React-App, instead using Parcel as the bundler.
+While it is nice to not have the overhead of Create-React-App, or the complexity of Webpack, Parcel is currently transitioning from v1 to v2, and Ant-Design and Parcel do not play well together. If I were to do this project over, I would not use both (probably transitioning to a different UI library).
 
-TODO link to these libraries
+## Future Work
+
+While the project at this point does have a complete set of features, there are a few things which would make it have significantly more utility:
+
+- Some form of DNS support (possibly mDNS) so applications can be accessed consistently without needing to find their IPs
+- Database deployments (especially that could be linked to deployments for testing purposes)
+- Built-in support for ENV variable injection into deployments (i.e. API Keys). This is currently done for the Kraken-UI compilation, so likely would be relatively low effort
+
+DNS resolution was something which should have been part of this project, however at that stage of development there were not libraries which were stable enough/compatible with other libraries in this project and the nightly build of the compiler, so due to the amount of time going into this feature it had to be scrapped.
 
 ## Artifacts
 
@@ -539,6 +553,12 @@ TODO link to these libraries
 
 ## Acknowledgements
 
-TODO flush this out:
+I want to personally thank a few different sources for making this project possible:
 
-Ryan Levick, Jon Gjenset, r/rust, Bill Siever
+First, I want to thank the creators of [The Rust Book](https://doc.rust-lang.org/book/). This is truly worth reading for every new rust developer, and was immensely helpful in understanding the basics.
+
+The r/rust reddit community was also helpful, and significantly better than StackOverflow to provide understaning of both language features and the history behind how those features came to be.
+
+Jon Gjenset and Ryan Levick are both Rust developers who pulish long-form YouTube content about Rust, which was useful and interesting to better understand some of the inner workings of the language.
+
+Finally, I want to thank Bill Siever for allowing me to run with a random project idea and for being flexible enough to let me shape it as I go, I've had a great time being able to explore the areas I found interesting and appreciate the opportunity to make something I actually want to build the way I want to build it.
