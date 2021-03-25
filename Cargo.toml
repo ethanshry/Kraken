@@ -40,6 +40,5 @@ rand = "0.7"
 kraken-utils = { git = "https://github.com/ethanshry/kraken-utils", branch = "dev" }
 openssl = { version = '0.10', optional = true }
 
-
 [features]
 vendored-openssl = ["openssl/vendored"]

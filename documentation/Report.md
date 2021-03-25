@@ -4,23 +4,23 @@ By Ethan Shry
 
 ## Abstract
 
-While modern cloud platforms have significantly lowered the barrier to entry for the public deployment of web-based applications, they can still be incredibly costly and add significant complexity to the development process, especially in the beginning phases of a project. In this paper I propose an easy to use LAN-based application deployment environment which will allow developers to quickly and easily test web applications on devices on their LAN, without the need to pay for or manage cloud resources.
+While modern cloud platforms have significantly lowered the barrier to entry for public deployment of web applications, they can still be incredibly costly and add significant complexity to the development process, especially for hobbyist developers or in the beginning stages of a project. In this paper I propose a LAN-based application deployment environment which will allow developers to quickly and easily test web applications on devices on their LAN, without the need to pay for or manage cloud resources.
 
-In [Section 1](##I.-Background), I will discuss background information for this project, including the project's primary aims. In [Section 2](##II.-Platform-Overview), I will provide a broad overview of the platform and its capabilities. In [Section 3](##III.-Usage), I will discuss the installation and onboarding process for using the platform to deploy applications to a LAN. Finally, [Section 4](##IV.-Platform-Systems) discusses in depth the major technical systems which allow the platform to achieve the features described above.
+In [Section I. Background](##I.-Background), I will discuss background information for this project, including the project's primary aims. In [Section II. Platform Overview](##II.-Platform-Overview), I will provide a broad overview of the platform and its capabilities. In [Section III. Usage](##III.-Usage), I will discuss the installation and onboarding process for using the platform to deploy applications to a LAN. Finally, [Section IV. Platform Systems](##IV.-Platform-Systems) discusses in depth the major technical systems which allow the platform to achieve the features described in Section II.
 
 ## I. Background
 
 ### Motivation
 
-Over the past several years, the proliferation of cloud services like Amazon Web Services (AWS), Microsoft Azure, and Google Cloud Platform (GCP) have lowered the barrier to the deployment of publicly accessible web applications. Many companies have migrated their entire operations away from private data centers, and entirely rely on these cloud offerings. Despite this, the cost of these solutions remains high for hobbyist developers. Below is a breakdown of the cost of hardware costs for dedicated, non-preemptible servers on the top three cloud platforms:
+Over the past several years, the proliferation of cloud services like Amazon Web Services (AWS), Microsoft Azure, and Google Cloud Platform (GCP) have lowered the barrier to the deployment of publicly accessible web applications. Most companies have at lease some cloud presence, and some are transitioning entirely away from on-premise datacenters entirely \[1\]. Despite this, the cost of these solutions remains high for hobbyist developers. Below is a breakdown of the cost of hardware costs for dedicated, non-preemptible linux virtual machines on the top three cloud platforms as of March 2021:
 
-| Instance Name | Platform | Specs           | Price (dollars/month) |
-| ------------- | -------- | --------------- | --------------------- |
-| EC2 t2.micro  | AWS      | 1 CPUs, 1GB RAM | $8.47                 |
-| A1 v2         | Azure    | 1 CPUs, 2GB RAM | $26.28                |
-| EC2 t2.large  | AWS      | 2 CPUs, 8GB RAM | $67.75                |
-| A4 v2         | Azure    | 4 CPUs, 8GB RAM | $116.07               |
-| e2-standard-2 | GCP      | 2 CPUs, 8GB RAM | $48.91                |
+| Instance Name | Platform | Specs           | Price (dollars/month) \[2\]\[3\]\[4\] |
+| ------------- | -------- | --------------- | ------------------------------------- |
+| EC2 t2.micro  | AWS      | 1 CPUs, 1GB RAM | $8.47                                 |
+| A1 v2         | Azure    | 1 CPUs, 2GB RAM | $26.28                                |
+| EC2 t2.large  | AWS      | 2 CPUs, 8GB RAM | $67.75                                |
+| A4 v2         | Azure    | 4 CPUs, 8GB RAM | $116.07                               |
+| e2-standard-2 | GCP      | 2 CPUs, 8GB RAM | $48.91                                |
 
 While there are cheaper instances available if you opt for preemptible services, or reserve hardware for an extended period of time, each platform has tens or hundreds of possible server configurations, which can make simply determining the correct offering for your use case a hassle. Beyond the determination of appropriate server capacity, users of cloud platforms also need to dedicate time to develop their knowledge to make use of these servers- often requiring the management of Linux servers, firewalls, security group settings, remote code deployment pipelines, and the management of cloud platform credentials, to name a few things. While these are undoubtedly valuable in a production application, they can add unnecessary complexity to any project, especially during the early stages of development when the focus could be on the development of project features.
 
@@ -28,28 +28,28 @@ While there are cheaper instances available if you opt for preemptible services,
 
 This project aims to achieve two things:
 
-- Reduce or eliminate the cost to deploy web applications for development or local use purposes
-- Reduce or eliminate the time and knowledge required to perform the above applications
+- Reduce or eliminate the cost to deploy web applications for development or local use
+- Reduce or eliminate the time and knowledge required to deploy the aforementioned applications
 
-It is important to understand the types of deployments this project is aiming to support- we are not trying to replace the cloud for production applications in use by thousands of users daily around the world, or even to host a personal website visited by a few hundred people a month. Rather, this project is aiming to allow developers to host local APIs to power hobbyist IoT projects, or provide an easy means for a developer to test a project they are developing actually builds in isolation from the other dependencies on their system in preparation for deployment to a cloud environment.
+It is important to understand the types of deployments this project is aiming to support- we are not trying to replace the cloud for production applications in use by thousands of users daily around the world, or even to host a personal website visited by a few hundred people a month. Rather, this project is aiming to allow developers to host local APIs to power hobbyist IoT projects, or provide an easy means for a developer to test a project they are developing actually builds in isolation from the other dependencies on their system. This could be used to facilitate smooth adoption of new collaboraters to a project, or in preparation for deployment to a cloud environment. In either of these cases, the actual migration of a project to a broader team or to the cloud is out of scope of this project, though a migration guide could be a worthwhile future addition.
 
-To this end, the platform needs to be as easy to use as possible, and able to easily be installed and run on whatever hardware users have available. The vision is the platform is flexible enough to be installed on a modern desktop, old laptop, Raspberry Pi, and be flexible enough to handle any of these devices being present or absent from the network. If the platform is installed on a laptop and the laptop is taken out of the house, then it should be resilient enough to maintain its deployments, and able to easily reconnect the device when it returns to the network.
+To this end, the platform needs to be as easy to use as possible and able to easily be installed and run on whatever hardware users have available. The vision a platform versatile enough to be installed and running across a modern desktop, old laptop, and Raspberry Pi all at once, and be flexible enough to handle any number of these devices being added or removed from the network. If the platform is installed on a laptop and the laptop is taken out of the house, then it should be resilient enough to maintain its deployments, and able to easily reconnect the device when it returns to the network.
 
 ### Related Work
 
-There are very few products which serve this niche.
+The niche this platform satisfies has no direct replacements, due to its unique positioning as a no-cost and easily managed solution.
 
-While there are plenty of cloud application deployment platforms, (AWS Elastic Beanstalk, Azure's App Service Deployment Center, etc.) they have the same problems of cloud solutions in general- namely the cost and knowledge barriers.
+While there are plenty of cloud application deployment platforms, (AWS Elastic Beanstalk, Azure's App Service Deployment Center, etc.) that are flexible enough to support API applications, the knowledge and cost barrier to using these services is the same as broader cloud solutions. There are also options for directly managing API services (CloudFlare Service Workers, AWS's API Gateway, etc.) are fairly restrictive in their capabilities, and even more challenging to manage. You could look to more flexible and capable cloud VM providers, however the cost for these is significant (as described above) and there is additional overhead in the management and maintence of these machines.
 
-While there are locally-hosted options (namely Docker for local deployments, and Kubernetes for wholistic application deployment and management), Docker is not sufficiently flexible, as it is isolated to a single device, and while it is easier to manage than manual dependency management, still has significant management overhead. Kubernetes, on the other hand, is infamous for developer's lack of ability to understand what it is or how to use it, which speaks to the knowledge overhead involved in effectively managing a Kubernetes cluster.
+While there are locally-hosted options (namely Docker for local deployments, and Kubernetes for wholistic application deployment and management), Docker on its own is not sufficiently flexible to satisfy our distributed and easily-manageable requirements, as it is isolated to a single device, and while it is easier to manage than manual dependency management, still has significant management overhead. Kubernetes, on the other hand, is infamous for developer's lack of ability to understand what it is or how to use it- even among companies actively interested in utilizing the technology over 40% cite the complexity and lack of developer expertise as key challenges, which speaks to the knowledge overhead involved in effectively understanding and managing a Kubernetes cluster \[5\].
 
 ### A Note on Scope of Work and Project Direction
 
-While cost and complexity form the backbone of the motivation for the project, the primary motivation for its design and development revolve around the desire to develop knowledge in new areas of computer science. While it would have been (relatively) trivial to implement this system in a technology stack in which I have development experience, or ignore reliability for what is fundamentally a development (and therefore not truly in need of stability) environment, I chose to focus on these areas of development as a matter of personal growth. Though decisions made as a result of this motivation do not impact my ability to accomplish the platform's primary goals, it did significantly reduce the set of features I would have otherwise been able to build into the platform, and did inform some of the design decisions I made in its development. I will endeavor to make a note of these shortcomings in the project as I cover its main systems.
+While cost and complexity form the backbone of the motivation for the project, the primary motivation for its design and development revolve around the desire to develop knowledge in new areas of computer science. While it would have been (relatively) trivial to implement this system in a technology stack in which I have development experience, or ignore reliability for what is fundamentally a development (and therefore not truly in need of stability) environment, I chose to focus on these areas of development as a matter of personal growth. Though decisions made as a result of this motivation did not impact my ability to accomplish the platform's primary goals, it did reduce the set of features I initially wanted to build into the platform, and did inform some of the design decisions I made in its development. I will endeavor to make a note of these shortcomings and alterations to project direction as I cover its main systems.
 
 ## II. Platform Overview
 
-The Kraken App Deployment Platform is a collection of devices running the Kraken service. The platform is made up of a single Orchestration node, and 0+ Worker nodes (although technically all nodes are both Orchestrators and Workers, see [Executors](###Executors) for more details). Users of the platform are able to access a web interface which allows them to monitor all devices (nodes) which are running the service. From this interface, they can also request the deployment of an application to the platform via a Github Url. This will trigger the platform's orchestrator to validate the deployment, and select a worker to handle the deployment via Docker. Users can then use the interface to monitor their deployment- accessing information like deployment status, resource usage statistics, application logs, and request updates or destruction of a deployment.
+The Kraken App Deployment Platform is a collection of devices running the Kraken service. The platform is made up of a single Orchestration node, and 0+ Worker nodes (although technically all nodes are both Orchestrators and Workers, see [Executors](###Executors) for more details). Users of the platform are able to access a web interface which allows them to monitor all devices (nodes) which are running the service. From this interface, they can also request the deployment of an application to the platform via a Github URL. This will trigger the platform's orchestrator to validate the deployment and select a worker to handle the deployment via Docker. Users can then use the interface to monitor their deployment- accessing information like deployment status, resource usage statistics, application logs, and request updates or destruction of a deployment.
 
 | Technology       | Purpose                                                                          |
 | ---------------- | -------------------------------------------------------------------------------- |
@@ -64,14 +64,14 @@ The Kraken App Deployment Platform is a collection of devices running the Kraken
 
 ### Platform Capabilities
 
-The Platform supports the following deployment types:
+The platform has been tested with support for the following deployment types:
 
-- NodeJS Applications
-- Python 3.6 Applications
+- NodeJS 12.x Compatible Applications
+- Python 3.6 Compatible Applications
 - Static HTML Sites
 - Custom Dockerfile Deployments
 
-That being said, the platform is highly extensible. To add additional deployment types, all that is required is a dockerfile and a minor (potentially single line) code addition. Additionally, because the platform uses docker under the hood to manage deployments, you can also ship a custom dockerfile with your application, and run whatever deployment type you want.
+The platform is highly extensible. To add additional deployment types, all that is required is a dockerfile and a minor (potentially single line) code addition. Additionally, because the platform uses docker under the hood to manage deployments, you can ship a custom dockerfile with your application, and run whatever deployment type you want.
 
 When a deployment is made, the UI provides insight into the state of that deployment. You can track its progress through the deployment process, as well as access to container usage information like CPU and RAM usage. Additionally the UI provides easy access to application logs for complete application monitoring.
 
@@ -562,3 +562,11 @@ The r/rust reddit community was also helpful, and significantly better than Stac
 Jon Gjenset and Ryan Levick are both Rust developers who pulish long-form YouTube content about Rust, which was useful and interesting to better understand some of the inner workings of the language.
 
 Finally, I want to thank Bill Siever for allowing me to run with a random project idea and for being flexible enough to let me shape it as I go, I've had a great time being able to explore the areas I found interesting and appreciate the opportunity to make something I actually want to build the way I want to build it.
+
+## Citations
+
+- \[1\] - https://resources.idg.com/download/2020-cloud-computing-executive-summary-rl
+- \[2\] - https://aws.amazon.com/ec2/pricing/
+- \[3\] - https://azure.microsoft.com/en-us/pricing/details/virtual-machines/linux/
+- \[4\] - https://cloud.google.com/compute/vm-instance-pricing
+- \[5\] - https://kublr.com/industry-info/docker-and-kubernetes-survey/
