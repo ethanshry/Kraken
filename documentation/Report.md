@@ -115,15 +115,15 @@ Running an installer performs the following sequence of tasks:
 - setup of kraken directory, and either compilation of the platform or downloading a compiled executable
 - establishment of the kraken.service, which will run a script to auto-update and auto-run the platform on boot
 
-There are two different installation options (the `installer-compile` and `installer-pi`) since compiling a rust project (or this project in particular) requires significant computing resources, as well as openssl, which does not come built in with Raspbian. As a result, prior to distributing a pre-compiled binary with openssl built in, compiling on a Raspberry Pi 3 B+ took upwards of an hour with active cooling, as well as additional configuration to get openssl installed. Now, Raspberry Pis simply need to download a ~20MB binary (this is unoptimized for size, Rust is notorious for having large binary sizes prior to optimization). See [Compilation](###Compilation) for more information about how Kraken achieves low-effort cross compilation.
+There are two different installation options (the `installer-compile` and `installer-pi`) since compiling a rust project (or this project in particular) requires significant computing resources, as well as openssl, which does not come built in with Raspbian. As a result, prior to distributing a pre-compiled binary with openssl built in, compiling on a Raspberry Pi 3 B+ took upwards of an hour with active cooling, as well as additional configuration to get openssl installed. Now, Raspberry Pis simply need to download a ~20MB binary (this has not been optimized for size, Rust is notorious for having large binary sizes prior to optimization due to static linking of all dependencies and static dispatch for generics). See [Compilation](###Compilation) for more information about how Kraken achieves low-effort cross compilation.
 
 The most detailed and up to date information about installation is available [here](./Installation.md).
 
-### Compilation
+### Binary Compilation
 
-Due to the low resources of a raspberry pi, compiling this project natively can take hours. For this reason, I have configured this project to support cross-compilation for Raspberry Pi. By making use of Rust's tooling, this process is actually fairly straightforward.
+Due to the low resources of a Raspberry Pi, compiling this project natively can take hours. For this reason, the project is configured to support cross-compilation for Raspberry Pi. By making use of Rust's tooling, this process is actually fairly straightforward.
 
-First, you must define the relevant target in your `.cargo/config.toml` file:
+First, you must define the target in your rust build tools (cargo) configuration file:
 
 ```toml
 [build]
@@ -139,34 +139,78 @@ Then you install the relevant linker to your system you are compiling from:
 sudo apt install arm-linux-gnueabihf-gcc
 ```
 
-To compile for RPi, we must also bundle in openssl. Luckily with Cargo's `features` feature, this becomes trivial. We first add `openssl` as an optional dependency to our `Config.toml`:
+To compile for RPi, you must also bundle in openssl. Luckily with Cargo's `features` feature, this becomes trivial. We first add `openssl` as an optional dependency to our `Config.toml` (which is the Rust `package.json` or `requirements.txt` equivalent):
 
 ```toml
 openssl = { version = '0.10', optional = true }
 ```
 
-and then we add the openssl feature to our `Config.toml`
+and then add the openssl feature to our `Config.toml`
 
 ```toml
 [features]
 vendored-openssl = ["openssl/vendored"]
 ```
 
-Then, we can simply compile our project as follows:
+Then simply compile the project as follows:
 
 ```bash
 cargo build --release --target armv7-unknown-linux-gnueabihf --features vendored-openssl
-# or for this project, just use the shortcut
+# or for this project, just use the shortcut defined in the Makefile
 make build-pi
 ```
 
-This will generate an executable, which can simply be uploaded to Github as a new release. The most recent release will be downloaded by `installer-pi.sh` as part of the installation process, or on each boot if a newer binary is available.
+This will generate an executable, which can be uploaded to Github as a new release. The most recent release will be downloaded by `installer-pi.sh` as part of the installation process, or on each boot if a newer binary is available.
 
 ### Application Onboarding
 
-Onboarding an application to the platform requires only a few simple steps. First, you must have a running version of the platform on your LAN. You can either follow the [installation steps above](###Installation), or simply clone the project and run the platform temporarily.
+The application onboarding process is as follows:
 
-Then you must configure your application to be run on the platform. To do this, you must create a `shipwreck.toml` file in the root directory of your repository, in the branch you want to be deployed to the platform. An example might look like the following:
+- Install/Run the platform
+- Create a `shipwreck.toml` file in your project's root specifying configuration information
+-
+
+Onboarding an application to the platform requires only a few simple steps. First, you must have a running version of the platform on your LAN. You can either follow the [installation steps above](###Installation) to install the platform as a service, or simply clone the project and run the dev installation script, and compile and build locally.
+
+Suppose we have a basic NodeJS express server, with a file structure and file contents:
+
+```bash
+# Directory Structure
+.
+├── package.json
+└── src
+    └── index.js
+```
+
+```js
+// index.js
+const express = require("express");
+let app = express();
+
+app.get("/", (req, res) => {
+  res.send("hello from nodeJS!");
+});
+
+app.listen(7211, () => {
+  console.log("listening on 7211");
+});
+```
+
+```json
+// package.json
+{
+  "name": "scapenode",
+  "main": "index.js",
+  "scripts": {
+    "start": "node ./src/index.js"
+  },
+  "dependencies": {
+    "express": "^4.17.1"
+  }
+}
+```
+
+To onboard this application to the platform, you must create a `shipwreck.toml` file in the root directory of your repository, in the branch you want to be deployed to the platform. An example might look like the following:
 
 ```toml
 [app]
@@ -176,14 +220,26 @@ author="Ethan Shry"
 endpoint="https://github.com/ethanshry/scapenode"
 
 [config]
-port=7211
-lang="node"
-run="npm start"
+port=7211 # the port specified in the express server
+lang="node" # node specified that this is a nodejs application
+run="npm start" # the command to be run - we could replace this with `node ./src/index.js`
+```
+
+Which will yield the following directory structure:
+
+```bash
+.
+├── package.json
+├── shipwreck.toml
+└── src
+    └── index.js
 ```
 
 Components of the `app` section describe metadata about the application, while fields of the `config` section describe important configuration aspects of your deployment. More details about these fields are available on the `info` screen in the platform interface, and the config field format is implemented in the `crate::deployment::shipwreck` module.
 
-From there, you simply need to access the `deployments` tab of the interface, and select the appropriate URL and branch for your deployment. This should enable the `Create Deployment` button, which will delegate the deployment to a worker on the platform.
+You will then need to access the platform interface to deploy the application, which means you need the IP address of the machine which is running the platform. If do not know the IP address, the [Kraken-Orchestrator-Discovery](https://github.com/ethanshry/Kraken-Orchestrator-Discovery) tool will scan your LAN for an IP address with an exposed port `8000`, which is the port that the platform API runs on. While a DNS server for the platform was something which was explored for ease-of-use, traditional DNS implementations require a consistent IP address and configuring either all devices on your LAN or your Router to point to that IP address, and mDNS libraries for Rust were incompatible, incomplete, or generally not sufficiently mature to be implemented in a reasonable amount of time. In any case, navigate to the platform interface at `PLATFORM_IP:8000`.
+
+From there, you simply need to access the `deployments` tab of the interface, and select the appropriate URL (NOT the git clone URL) and branch for your deployment. This should enable the `Create Deployment` button, which will delegate the deployment to a worker on the platform.
 
 ![Deployment UI Example](./images/deployment_url_and_branch_ok.png)
 
@@ -193,7 +249,7 @@ This section will cover the main systems involved in the platform. The figure be
 
 ![Node Components](./images/node_components_diagram.png)
 
-As you can see, each node has two different `Executors` running at any given time. These are outlined more in the [Executors](###Executors) section, however an executor is a way to differentiate groups of functionality. There are effectively two types of nodes on the platform- a single orchestrator, and many workers. Their responsibilities are covered in the [Workers](###Workers), [Orchestrators](###Orchestrators), and [Orchestration Rollover Candidates](###Orchestration-Rollover-Candidates) sections below.
+As you can see, each node has two different `Executors` running at any given time- a `WorkerExecutor` and an `OrchestrationExecutor`. These are outlined more in the [Executors](###Executors) section, however an executor is a way to differentiate groups of functionality. There are effectively two types of nodes on the platform- orchestrators and workers. Orchestrators are either active (the primary orchestrator) or inactive (rollover candidates). Their responsibilities are covered in the [Workers](###Workers), [Orchestrators](###Orchestrators), and [Orchestration Rollover Candidates](###Orchestration-Rollover-Candidates) sections below.
 
 The way the various pieces of the platform communicate with each other is outlined in [Communication](###Communication).
 
@@ -444,7 +500,7 @@ impl Executor for OrchestrationExecutor {
 
 ### Orchestration Rollover Candidates
 
-Though technically this role falls under the `OrchestrationExecutor` umbrella, an Orchestration Rollover Candidate is worth talking about separately. These are `OrchestrationExecutors` which have a `rollover_priority != Some(0)`. In these cases, the `setup` for the executor will do nothing. In `execute`, the orchestrator is only responsible for checking to see that it can communicate with the primary orchestrator. If the candidate is the primary candidate (i.e. the first rollover node), then it will also backup the database and log data from the primary orchestrator.
+Though technically this role falls under the `OrchestrationExecutor` umbrella, an Orchestration Rollover Candidate is worth talking about separately. These are `OrchestrationExecutors` which have a `rollover_priority != Some(0)`. In these cases, the `setup` for the executor will do nothing. In `execute`, the orchestrator is only responsible for checking to see that it can communicate with the primary orchestrator. If the candidate is the primary candidate (i.e. the first rollover node), then it will also backup the database and log data from the primary orchestrator. For more information on the rollover process itself, see [Rollover](##Rollover)
 
 ```rust
 
@@ -484,11 +540,11 @@ impl Executor for OrchestrationExecutor {
 
 ### Communication
 
-The most complicated portion of this project is figuring out how all the different pieces of the platform communicate with each other. The below diagram covers the different pieces of the platform, and where they are communicating.
+The communication between different platform systems is designed to maximize simplicity within each system. The below diagram covers the different pieces of the platform, and how they are communicating.
 
 ![Platform Communication](./images/platform_communication_diagram.png)
 
-The first thing to note is the way external users interface with the platform. The User Interface only communicates with the platform via the GraphQL API. This communication method was chosen so as to maximize flexibility in development- by using GraphQL, it is very easy to modify the schema of the requests on-the-fly, which sped up development significantly, and allows for future expansibility. The GraphQL API (which really rests on top of a standard REST API) has a thread-safe reference to the In-Memory State Storage (or the `Database`) that is owned by the `OrchestrationExecutor`. All the data to power the API comes from this database, and any user requests which are made to the platform will be created in this database. The only exception to this is the delivery of UI files (and application log files), which come from the REST API.
+The first thing to note is the way external users interface with the platform. The User Interface only communicates with the platform via the GraphQL API. This communication method was chosen so as to maximize flexibility in development- by using GraphQL, it is very easy to modify the schema of the requests on-the-fly, which sped up development significantly, and allows for future expansibility. The GraphQL API (which actually rests on top of a standard REST API) has a thread-safe reference to the In-Memory State Storage (or the `Database`) that is owned by the `OrchestrationExecutor`. All the data to power the API comes from this database, and any user requests which are made to the platform will be created in this database. The only exception to this is the delivery of UI files (and application log files), which come from the REST API.
 
 This theme- the ownership of a thread-safe reference to the `OrchestrationExecutor`'s database, is common across all other parts of the platform as well. The `OrchestrationExecutor` only monitors the database to determine which tasks to perform. The different RabbitMQ queue consumers the database own all have a reference to this database as well, so any inbound to the `OrchestrationExecutor` comes through the database. The only exception to this is in Orchestration Rollover Candidates, which monitor a route on the REST API to ensure the primary orchestrator is still active, and to receive their backup data.
 
@@ -516,11 +572,59 @@ pub struct Database {
 }
 ```
 
-Anything which wants to communicate inbound to the `OrchestrationExecutor` (i.e. RabbitMQ Consumers and the REST/GraphQL APIs) has a thread-safe reference to this database. This model is actually very similar to the implementation of the [mini-redis](https://github.com/tokio-rs/mini-redis) crate. This design allows the `OrchestrationExecutor::execute` method to simply iterate over information in the database, instead of looking for messages in many different RabbitMQ queues, or performing many operations out-of-band as the different messages come in from different sources. While this does potentially reduce performance, the simplicity and ease of debugging gained by having a single execution loop is worth the minor sacrifice.
+Anything which wants to communicate inbound to the `OrchestrationExecutor` (i.e. RabbitMQ Consumers and the REST/GraphQL APIs) has an `Arc<Mutex<Database>>` to this database. This model is actually very similar to the implementation of the [mini-redis](https://github.com/tokio-rs/mini-redis)[6] crate, which is both simple and designed by the creators of `tokio`, one of the most popular async runtimes for Rust. This design allows the `OrchestrationExecutor::execute` method to iterate over information in the database, instead of looking for messages across many different RabbitMQ queues, or performing many operations out-of-band as the different messages come in from different sources. While this does potentially reduce performance, since we look at each deployment through each iteration, this reduces the potential for the Orchestrator to act on out-of-date information, and the simplicity and ease of debugging gained by having a single straightforward execution loop is very convenient.
 
 ### Rollover
 
-The rollover process for the platform is actually relatively straightforward. All rollover activities are handled by the `OrchestrationExecutor` and the `rollover_priority`. In the case that a node which is not the Orchestrator (that is to say, with a `rollover_priority != Some(0)`) is unable to access the `/health/<requester_node_id>` REST API endpoint, that executor will go into an exponential backoff period attempting to access that route. That is to give the primary orchestrator time to recover from whatever service interruption it is experiencing. If after that period of backoff (~10s) the secondary orchestrator is unable to establish a connection, it will return an `ExecutionFailure::NoOrchestrator` from it's `execute` method call. When this response is received by the main application loop, the orchestrator will then do one of two things. If we are the primary rollover candidate (i.e. `rollover_priority != Some(1)`) then we will alter our rollover priority to be `Some(0)` and establish ourselves as the primary orchestrator of a new platform. All other nodes will instead enter another period of exponential backoff (~2m) waiting to connect to the new platform.
+The rollover process for the platform is actually relatively straightforward. All rollover activities are handled by the `OrchestrationExecutor` and dictated by the `rollover_priority`. Orchestrators have four states:
+
+| `rollover_priority` | Meaning                                                                                                                                                   |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Some(0)`           | The node is the primary orchestrator                                                                                                                      |
+| `Some(1)`           | The node is the primary rollover candidate, and is backing up the database and log files of the primary orchestrator                                      |
+| `Some(255)`         | The node is not yet in the database, so it cannot be assigned a priority, or all priorities are assigned                                                  |
+| `Some(n)`           | The node is not a rollover candidate, and just monitors the health endpoint. It could become the primary candidate as a result of a healthcheck api call. |
+
+Priorities are assigned by calls to the `/health/<requester_node_id>` API endpoint, which is the endpoint used by secondary orchestrators to ensure the primary orchestrator is running, through the following method:
+
+```rust
+pub fn get_orchestrator_rank(&mut self, node_id: &str) -> u8 {
+    if let Some(n) = self.nodes.get(node_id) {
+        let mut n = n.clone();
+        // node does not have an assigned priority, so figure one out
+        let nodes: Vec<_> = self.nodes.iter().collect();
+        let mut priorities: [bool; 255] = [false; 255];
+        for (_, n) in nodes {
+            if let Some(p) = n.orchestration_priority {
+                priorities[p as usize] = true;
+            }
+        }
+        for (i, v) in priorities.iter().enumerate() {
+            if *v == false {
+                if let Some(p) = n.orchestration_priority {
+                    if p < (i as u8) {
+                        return p;
+                    }
+                }
+                n.orchestration_priority = Some(i as u8);
+                self.nodes.insert(node_id.to_string(), n);
+                return i as u8;
+            }
+        }
+        // No priority is available
+        return 255;
+    } else {
+        // node is not in DB, so give no priority
+        return 255;
+    }
+}
+```
+
+In the case that a node which is not the Orchestrator (that is to say, with a `rollover_priority != Some(0)`) is unable to access the `/health/<requester_node_id>` REST API endpoint, that executor will go into an exponential backoff period attempting to regain access to that route. That is to give the primary orchestrator time to recover from whatever service interruption it is experiencing. If after that period of backoff (~10s) the secondary orchestrator is unable to establish a connection, it will return an `ExecutionFailure::NoOrchestrator` from it's `execute` method call. When this response is received by the main application loop, the orchestrator will then do one of two things. If it is the primary rollover candidate (i.e. `rollover_priority == Some(1)`) then we will alter our rollover priority to be `Some(0)` and establish itself as the primary orchestrator of a new platform. All other nodes will instead enter another period of exponential backoff (~3m) waiting to connect to the new platform, at the end of which they will terminate.
+
+In the case of the faliure of a node to report its status to the Orchestrator for a period of 1 minute, the Orchestrator will remove it from the database, and redeploy its deployments to other nodes. Additionally, that node's orchestrator's `rollover_priority` will be freed up to be assigned to another node.
+
+This rollover scheme is sufficient to handle the loss of any number of worker nodes, since whenever a worker node is lost, the remaining node's `rollover_priorities` will be reassigned. In the case that a worker node with `rollover_priority == Some(1)` is lost and within the minute of no connection, the Orchestrator goes down, the platform will have cascading node faliure. In the case that the Orchestrator goes down, and the primary rollover candidate also goes down before it has a chance to assign a new primary rollover candidate, the platform will also have cascading node faliure. While this would be a terrible design for a production system, the primary focus of the platform is its ease-of-use, not its rollover strategy, and it is relatively easy to just reboot the platform and re-establish the deployments. Additionally the case in which multiple specific devices would fail within minutes of each other, due to non-platform induced problems (since they would need to fail almost immidiately after setup to not have assigned backup nodes) is relatively low.
 
 In the case of rollover, the new orchestrator will be operating on the most recently saved `Database` backup. Since the platform was designed as a development environment, we do not make any effort to re-attach to existing deployments. Instead, we send a signal to all nodes to spin down their deployments, and the primary orchestrator will treat all deployments as though they were newly requested.
 
@@ -528,9 +632,11 @@ In the case of rollover, the new orchestrator will be operating on the most rece
 
 The platform UI is relatively simple. It provides basic information about the platform, including a brief tutorial for onboarding. It has a page to monitor the various nodes attached to the platform, and a place to request and monitor the various deployments on the platform.
 
-The User Interface is a React-Typescript app. It used Urql as the GraphQL API interface, and Ant-Design as the UI library. It is not based on Create-React-App, instead using Parcel as the bundler.
+The User Interface is a React-Typescript app. It used Urql as the GraphQL API interface, and Ant-Design as the UI library.
 
-While it is nice to not have the overhead of Create-React-App, or the complexity of Webpack, Parcel is currently transitioning from v1 to v2, and Ant-Design and Parcel do not play well together. If I were to do this project over, I would not use both (probably transitioning to a different UI library).
+It is not based on Create-React-App, which is probably the standard way to setup a new React project, and handles building and minimizing a react project, as the default set of dependencies from Create-React-App as of March 2021 is over 50 items, which felt egregious for a project boilerplate. Instead, Kraken-UI uses [Parcel](https://parceljs.org/getting_started.html)[7] as a bundler, which is a low-configuration bundler.
+
+While it is nice to not have the overhead of Create-React-App, or the complexity of Webpack, Parcel is currently transitioning from v1 to v2, and Ant-Design and Parcel do not play well together. If I were to do this project over, I would not use both together (probably transitioning to a different UI library, and back to Webpack as a bundler unless Parcel has had sufficient time to mature).
 
 ## Future Work
 
@@ -555,18 +661,23 @@ DNS resolution was something which should have been part of this project, howeve
 
 I want to personally thank a few different sources for making this project possible:
 
-First, I want to thank the creators of [The Rust Book](https://doc.rust-lang.org/book/). This is truly worth reading for every new rust developer, and was immensely helpful in understanding the basics.
+First, I want to thank the creators of [The Rust Book](https://doc.rust-lang.org/book/)[8]. This is truly worth reading for every new rust developer, and was immensely helpful in understanding the basics.
 
 The r/rust reddit community was also helpful, and significantly better than StackOverflow to provide understaning of both language features and the history behind how those features came to be.
 
-Jon Gjenset and Ryan Levick are both Rust developers who pulish long-form YouTube content about Rust, which was useful and interesting to better understand some of the inner workings of the language.
+Jon Gjenset[9] and Ryan Levick[10] are both Rust developers who pulish long-form YouTube content about Rust, which was useful and interesting to better understand some of the inner workings of the language.
 
 Finally, I want to thank Bill Siever for allowing me to run with a random project idea and for being flexible enough to let me shape it as I go, I've had a great time being able to explore the areas I found interesting and appreciate the opportunity to make something I actually want to build the way I want to build it.
 
 ## Citations
 
-- \[1\] - https://resources.idg.com/download/2020-cloud-computing-executive-summary-rl
-- \[2\] - https://aws.amazon.com/ec2/pricing/
-- \[3\] - https://azure.microsoft.com/en-us/pricing/details/virtual-machines/linux/
-- \[4\] - https://cloud.google.com/compute/vm-instance-pricing
-- \[5\] - https://kublr.com/industry-info/docker-and-kubernetes-survey/
+- \[1\] - Cloud Adoption Survey https://resources.idg.com/download/2020-cloud-computing-executive-summary-rl
+- \[2\] - AWS Pricing https://aws.amazon.com/ec2/pricing/
+- \[3\] - Azure Pricing https://azure.microsoft.com/en-us/pricing/details/virtual-machines/linux/
+- \[4\] - GCP PRicing https://cloud.google.com/compute/vm-instance-pricing
+- \[5\] - Kubernetes Challenges in Industry https://kublr.com/industry-info/docker-and-kubernetes-survey/
+- \[6\] - Mini-Redis https://github.com/tokio-rs/mini-redis
+- \[7\] - Parcel JS https://parceljs.org/getting_started.html
+- \[8\] - The Rust Book https://doc.rust-lang.org/book/
+- \[9\] - Jon Gjenset's Youtube Channel https://www.youtube.com/channel/UC_iD0xppBwwsrM9DegC5cQQ
+- \[10\] - Ryan Levick's Youtube Channel https://www.youtube.com/channel/UCpeX4D-ArTrsqvhLapAHprQ

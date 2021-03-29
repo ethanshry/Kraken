@@ -86,22 +86,28 @@ impl Database {
     pub fn get_orchestrator_rank(&mut self, node_id: &str) -> u8 {
         if let Some(n) = self.nodes.get(node_id) {
             let mut n = n.clone();
-            if let Some(p) = n.orchestration_priority {
-                return p;
-            }
             // node does not have an assigned priority, so figure one out
             let nodes: Vec<_> = self.nodes.iter().collect();
-            let mut max_priority = 0;
+            let mut priorities: [bool; 255] = [false; 255];
             for (_, n) in nodes {
                 if let Some(p) = n.orchestration_priority {
-                    if p != 255 && p > max_priority {
-                        max_priority = p;
-                    }
+                    priorities[p as usize] = true;
                 }
             }
-            n.orchestration_priority = Some(max_priority + 1);
-            self.nodes.insert(node_id.to_string(), n);
-            return max_priority + 1;
+            for (i, v) in priorities.iter().enumerate() {
+                if *v == false {
+                    if let Some(p) = n.orchestration_priority {
+                        if p < (i as u8) {
+                            return p;
+                        }
+                    }
+                    n.orchestration_priority = Some(i as u8);
+                    self.nodes.insert(node_id.to_string(), n);
+                    return i as u8;
+                }
+            }
+            // No priority is available
+            return 255;
         } else {
             // node is not in DB, so give no priority
             return 255;
