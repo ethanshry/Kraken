@@ -272,16 +272,11 @@ impl OrchestrationExecutor {
                 .output()
                 .expect("err in clone");
 
-            println!("{:?}", output);
-
             let data = str::from_utf8(&output.stderr).unwrap();
 
             kraken_utils::file::append_to_file("tmp/site/out.txt", data);
-            println!("1");
             copy_dir_contents_to_static("tmp/site/public");
-            println!("2");
             copy_dir_contents_to_static("tmp/site/dist");
-            println!("3");
             fs::remove_dir_all("tmp/site").unwrap();
             info!("Compilation of Kraken-UI Complete");
         }

@@ -375,8 +375,17 @@ impl Deployment {
     pub fn update_status(&mut self, new_status: &ApplicationStatus) {
         // Only update the status if it is actually new
         if *new_status != self.status.0 {
-            self.status_history.push(self.status.clone());
-            self.status = (new_status.clone(), SystemTime::now());
+            match self.status.0 {
+                ApplicationStatus::DestructionRequested
+                | ApplicationStatus::UpdateRequested
+                | ApplicationStatus::DeploymentRequested => {
+                    return;
+                }
+                _ => {
+                    self.status_history.push(self.status.clone());
+                    self.status = (new_status.clone(), SystemTime::now());
+                }
+            }
         }
     }
 
