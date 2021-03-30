@@ -85,10 +85,10 @@ The `NodeMode` struct defines which type of Node we are working as. Different No
 Therefore you can think of every device as having at least a single Executor. Every device has a `WorkerExecutor`, which does the following:
 
 - Reports their system statistics
-- Manages any requests for local deployments (including updates, teardowns, and faliures)
+- Manages any requests for local deployments (including updates, teardowns, and failures)
 - Forwards logs of local deployments to the orchestrator
-- Ensures they have a valid connection to a platform in the case of orchestrator or critical service faliure
-- Serves as a rollover canidate in the case of orchestrator faliure. This might include being a backup device for platform data
+- Ensures they have a valid connection to a platform in the case of orchestrator or critical service failure
+- Serves as a rollover canidate in the case of orchestrator failure. This might include being a backup device for platform data
 
 One node on the network, the orchestrator, has an additional executor, the `OrchestrationExecutor`, which:
 
@@ -96,7 +96,7 @@ One node on the network, the orchestrator, has an additional executor, the `Orch
 - Provides a GQL server to provide data for the UI experience
 - Maintains logs for all deployments
 - Coordinates requests from the UI experience (i.e. deployment, teardown, update), and distribute those requests to workers
-- Monitors the platform for deployment/node faliure
+- Monitors the platform for deployment/node failure
 - Ensures critical platform services exist to allow the platform to function (i.e. a RabbitMQ instance)
 
 These functions are broken down in their respective files in the `crate::platform_executor` module. Each role adheres to the following trait
@@ -107,9 +107,9 @@ These functions are broken down in their respective files in the `crate::platfor
 #[async_trait]
 pub trait Executor {
     /// Is called once to set up this node
-    async fn setup(&mut self, node: &mut GenericNode) -> Result<(), SetupFaliure>;
+    async fn setup(&mut self, node: &mut GenericNode) -> Result<(), SetupFailure>;
     /// Is called repeatedly after setup has terminated
-    async fn execute(&mut self, node: &mut GenericNode) -> Result<(), ExecutionFaliure>;
+    async fn execute(&mut self, node: &mut GenericNode) -> Result<(), ExecutionFailure>;
     // ...
 }
 ```
@@ -165,7 +165,7 @@ This is also a work in progress, see [#47](https://github.com/ethanshry/Kraken/i
 
 At this point, there is no platform resilliancy. In fact, should anything bad happen, it is highly likely the whole thing will just fall down like a tower of cards.
 
-Ideally, this will be fixed in the next iteration, and faliures will lead to re-deployments and rollover processes.
+Ideally, this will be fixed in the next iteration, and failures will lead to re-deployments and rollover processes.
 
 ### A Note on RabbitMQ Active/Active
 

@@ -1,5 +1,5 @@
 //! Defines the Worker role, which handles core fucntionality of all devices on the platform
-use super::{DeploymentInfo, ExecutionFaliure, Executor, GenericNode, SetupFaliure, Task};
+use super::{DeploymentInfo, ExecutionFailure, Executor, GenericNode, SetupFailure, Task};
 use crate::docker::DockerBroker;
 use crate::gql_model::ApplicationStatus;
 use crate::rabbit::sysinfo_message::SysinfoMessage;
@@ -18,14 +18,20 @@ mod executor;
 /// Handles standard tasks- the ability to deploy applications, the monitoring of system statistics, etc
 pub struct WorkerExecutor {
     /// Each WorkRequestMessage is a request of the worker by the orchestrator
-    /// C is a consumer of this worker's WorkRequestQueue
-    c: Option<lapin::Consumer>,
+    /// work_queue_consumer is a consumer of this worker's WorkRequestQueue
+    work_queue_consumer: Option<lapin::Consumer>,
+    deployments: std::collections::LinkedList<DeploymentInfo>,
+    tasks: Vec<Task>,
 }
 
 impl WorkerExecutor {
     /// Creates a new Orchestrator Object
     pub fn new() -> WorkerExecutor {
-        WorkerExecutor { c: None }
+        WorkerExecutor {
+            work_queue_consumer: None,
+            deployments: std::collections::LinkedList::new(),
+            tasks: vec![],
+        }
     }
 }
 
@@ -66,22 +72,22 @@ impl WorkerExecutor {
         };
         system_status_proc
     }
-}
 
-/// Attempts to kill all deployments that this deployment is responsible for.
-pub async fn clear_deployments(node: &mut GenericNode) {
-    for d in &node.deployments {
-        if let Err(_) = kill_deployment(
-            &node.system_id,
-            node.broker.as_ref().unwrap(),
-            &d.deployment_id,
-        )
-        .await
-        {
-            warn!("Error while attempting to clear_deployment for deployment_id {}, this is probably due to an attempt to kill a deployment which is no longer running", &d.deployment_id);
+    /// Attempts to kill all deployments that this deployment is responsible for.
+    pub async fn clear_deployments(&mut self, node: &mut GenericNode) {
+        for d in &self.deployments {
+            if let Err(_) = kill_deployment(
+                &node.system_id,
+                node.broker.as_ref().unwrap(),
+                &d.deployment_id,
+            )
+            .await
+            {
+                warn!("Error while attempting to clear_deployment for deployment_id {}, this is probably due to an attempt to kill a deployment which is no longer running", &d.deployment_id);
+            }
         }
+        self.deployments = std::collections::LinkedList::new();
     }
-    node.deployments = std::collections::LinkedList::new();
 }
 
 /// Deploys an application instance via docker

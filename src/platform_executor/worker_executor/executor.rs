@@ -1,6 +1,6 @@
 //! Defines the Worker role, which handles core fucntionality of all devices on the platform
 use super::{
-    handle_deployment, kill_deployment, ExecutionFaliure, Executor, GenericNode, SetupFaliure,
+    handle_deployment, kill_deployment, ExecutionFailure, Executor, GenericNode, SetupFailure,
     Task, WorkerExecutor,
 };
 use crate::docker::DockerBroker;
@@ -18,14 +18,14 @@ use log::{info, warn};
 impl Executor for WorkerExecutor {
     /// The tasks associated with setting up this role.
     /// Workers are primarilly concerned with connecting to RabbitMQ, and establishing necesarry queues
-    async fn setup(&mut self, node: &mut GenericNode) -> Result<(), SetupFaliure> {
+    async fn setup(&mut self, node: &mut GenericNode) -> Result<(), SetupFailure> {
         clear_tmp();
 
         match Self::connect_to_rabbit_instance(&node.rabbit_addr).await {
             Ok(b) => node.broker = Some(b),
             Err(e) => {
                 warn!("{}", e);
-                return Err(SetupFaliure::NoRabbit);
+                return Err(SetupFailure::NoRabbit);
             }
         }
 
@@ -39,7 +39,7 @@ impl Executor for WorkerExecutor {
         // send system stats
         let publish_node_stats_task =
             WorkerExecutor::get_publish_node_system_stats_task(node).await;
-        node.worker_tasks.push(Task {
+        self.tasks.push(Task {
             task: publish_node_stats_task,
             label: String::from("NodeStats"),
         });
@@ -51,7 +51,7 @@ impl Executor for WorkerExecutor {
             Ok(b) => b,
             Err(_) => panic!("Could not establish rabbit connection"),
         };
-        self.c = Some(
+        self.work_queue_consumer = Some(
             broker
                 .consume_queue_incr(&node.system_id, &node.system_id)
                 .await,
@@ -62,11 +62,11 @@ impl Executor for WorkerExecutor {
 
     /// Logic which should be executed every iteration
     /// Primarilly focused on handling deployment/kill/update requests, and processing logs
-    async fn execute(&mut self, node: &mut GenericNode) -> Result<(), ExecutionFaliure> {
+    async fn execute(&mut self, node: &mut GenericNode) -> Result<(), ExecutionFailure> {
         // Each execution will perform a single task in the work queue.
         // If more work needs to be completed, it will happen when execute is next called
 
-        match &mut self.c {
+        match &mut self.work_queue_consumer {
             Some(c) => {
                 let item = crate::rabbit::util::try_fetch_consumer_item(c).await;
                 if let Some(data) = item {
@@ -84,7 +84,7 @@ impl Executor for WorkerExecutor {
                             )
                             .await;
                             if let Ok(r) = res {
-                                node.deployments.push_back(r);
+                                self.deployments.push_back(r);
                             }
                         }
                         WorkRequestType::CancelDeployment => {
@@ -95,7 +95,7 @@ impl Executor for WorkerExecutor {
                             )
                             .await;
                             if let Ok(r) = res {
-                                for d in node.deployments.iter_mut() {
+                                for d in self.deployments.iter_mut() {
                                     if d.deployment_id == r {
                                         d.deployment_is_ok(false);
                                         break;
@@ -107,11 +107,11 @@ impl Executor for WorkerExecutor {
                     }
                 }
             }
-            None => return Err(ExecutionFaliure::BadConsumer),
+            None => return Err(ExecutionFailure::BadConsumer),
         }
 
         let mut deployments_to_remove = vec![];
-        for (index, d) in node.deployments.iter_mut().enumerate() {
+        for (index, d) in self.deployments.iter_mut().enumerate() {
             // if more than a second has passed, check for logs and get updated deployment status
             if d.last_log_time
                 .elapsed()
@@ -163,9 +163,9 @@ impl Executor for WorkerExecutor {
         deployments_to_remove.reverse();
 
         for index in deployments_to_remove.iter() {
-            let mut split_list = node.deployments.split_off(*index);
+            let mut split_list = self.deployments.split_off(*index);
             split_list.pop_front();
-            node.deployments.append(&mut split_list);
+            self.deployments.append(&mut split_list);
         }
         Ok(())
     }

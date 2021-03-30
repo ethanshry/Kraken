@@ -2,7 +2,7 @@
 
 use b64::FromBase64;
 use log::info;
-use reqwest::header::{CONTENT_TYPE, USER_AGENT};
+use reqwest::header::{AUTHORIZATION, CONTENT_TYPE, USER_AGENT};
 use serde::Deserialize;
 
 #[derive(Deserialize, Debug)]
@@ -89,14 +89,24 @@ pub async fn get_tail_commits_for_repo_branches(user: &str, repo: &str) -> Optio
         .get(&url)
         .header(CONTENT_TYPE, "application/json")
         .header(USER_AGENT, "Kraken")
+        .header(
+            AUTHORIZATION,
+            format!(
+                "token {}",
+                std::env::var("GITHUB_TOKEN").unwrap_or(String::from("undefined"))
+            ),
+        )
         .send()
         .await;
+
+    println!("{:?}", &response);
 
     match response {
         Ok(r) => match r.json().await {
             Ok(data) => data,
             Err(e) => {
                 info!("Failed to parse JSON: {}", e);
+
                 None
             }
         },
@@ -138,6 +148,13 @@ pub async fn check_for_file_in_repo(
         .get(&url)
         .header(CONTENT_TYPE, "application/json")
         .header(USER_AGENT, "Kraken")
+        .header(
+            AUTHORIZATION,
+            format!(
+                "token {}",
+                std::env::var("GITHUB_TOKEN").unwrap_or(String::from("undefined"))
+            ),
+        )
         .send()
         .await;
 

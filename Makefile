@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: documentation lint cargoclean build-pi spinup-rabbit spinup-dns cleanup reboot
+.PHONY: documentation lint cargoclean build-pi spinup-rabbit spinup-dns cleanup reboot report stop-env-commit start-env-commit
 
 documentation:
 	cargo doc --open
@@ -29,6 +29,11 @@ cleanup:
 reboot:
 	make cleanup
 	cargo run
+
+report:
+	# assumes we have already done:
+	# pip install grip
+	grip documentation/Report.md --export
 
 stop-env-commit:
 	git update-index --assume-unchanged .env

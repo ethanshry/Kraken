@@ -21,9 +21,9 @@ pub enum NodeMode {
     ORCHESTRATOR,
 }
 
-/// Defines reasons for faliure of the setup task
+/// Defines reasons for failure of the setup task
 #[derive(Debug)]
-pub enum SetupFaliure {
+pub enum SetupFailure {
     /// Could not connect to existing platform
     NoPlatform,
     /// Could not create RammitMQ instance
@@ -32,8 +32,8 @@ pub enum SetupFaliure {
     NoRabbit,
 }
 
-/// Defines reasons for faliure of the execute task
-pub enum ExecutionFaliure {
+/// Defines reasons for failure of the execute task
+pub enum ExecutionFailure {
     /// Task should be killed after this execution
     SigKill,
     /// Error in accessing consumer or parsing message
@@ -82,27 +82,19 @@ impl DeploymentInfo {
 /// Data struct which contains data that should be shared between Executors
 /// Or data which we don't want to lose access to if one executor crashes
 pub struct GenericNode {
-    pub deployment_processes: Vec<Task>,
-    pub queue_consumers: Vec<Task>,
-    pub worker_tasks: Vec<Task>,
     pub broker: Option<RabbitBroker>,
     pub system_id: String,
     pub rabbit_addr: String,
     pub orchestrator_addr: String,
-    pub deployments: std::collections::LinkedList<DeploymentInfo>,
 }
 
 impl GenericNode {
     pub fn new(system_id: &str, rabbit_addr: &str, orchestrator_addr: &str) -> GenericNode {
         GenericNode {
-            deployment_processes: vec![],
-            queue_consumers: vec![],
-            worker_tasks: vec![],
             broker: None,
             rabbit_addr: rabbit_addr.to_owned(),
             orchestrator_addr: orchestrator_addr.to_owned(),
             system_id: system_id.to_owned(),
-            deployments: std::collections::LinkedList::new(),
         }
     }
 }
@@ -112,9 +104,9 @@ impl GenericNode {
 #[async_trait]
 pub trait Executor {
     /// Is called once to set up this node
-    async fn setup(&mut self, node: &mut GenericNode) -> Result<(), SetupFaliure>;
+    async fn setup(&mut self, node: &mut GenericNode) -> Result<(), SetupFailure>;
     /// Is called repeatedly after setup has terminated
-    async fn execute(&mut self, node: &mut GenericNode) -> Result<(), ExecutionFaliure>;
+    async fn execute(&mut self, node: &mut GenericNode) -> Result<(), ExecutionFailure>;
     /// Connects to the local RabbitMQ service
     /// TODO make this smarter (i.e. exponential backoff or smtn)
     async fn connect_to_rabbit_instance(addr: &str) -> Result<RabbitBroker, String> {

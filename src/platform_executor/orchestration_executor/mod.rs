@@ -1,5 +1,5 @@
 //! Defines the Orchestrator role, which manages work for all devices on the platform
-use super::{ExecutionFaliure, Executor, GenericNode, SetupFaliure, Task};
+use super::{ExecutionFailure, Executor, GenericNode, SetupFailure, Task};
 use crate::gql_model::{Deployment, Service, ServiceStatus};
 use crate::gql_schema::{Mutation, Query};
 use crate::rabbit::RabbitBroker;
@@ -32,6 +32,7 @@ pub struct OrchestrationExecutor {
     /// The rank of this executor for rollover. 0 implies this is the active orchestrator, None implies none is assigned.
     /// Otherwise is treated as lowest number is highest priority
     pub rollover_priority: Option<u8>,
+    pub queue_consumers: Vec<Task>,
 }
 
 /// Ensures the deployment has the potential for success
@@ -87,7 +88,7 @@ pub async fn validate_deployment(git_url: &str, git_branch: &str) -> Result<(Str
     }
 }
 
-/// Attempts to fetch the numeric priority for the specified system in an orchestration faliure
+/// Attempts to fetch the numeric priority for the specified system in an orchestration failure
 ///
 /// # Arguments
 ///
@@ -187,6 +188,7 @@ impl OrchestrationExecutor {
             api_server: None,
             db_ref: Arc::new(Mutex::new(db)),
             rollover_priority: rollover_priority,
+            queue_consumers: vec![],
         }
     }
 
@@ -263,13 +265,16 @@ impl OrchestrationExecutor {
 
             // Build the site
             info!("Compiling Kraken-UI");
-            std::process::Command::new("npm")
+            let output = std::process::Command::new("npm")
                 .arg("run")
                 .arg("build")
                 .current_dir("tmp/site")
                 .output()
                 .expect("err in clone");
 
+            let data = str::from_utf8(&output.stderr).unwrap();
+
+            kraken_utils::file::append_to_file("tmp/site/out.txt", data);
             copy_dir_contents_to_static("tmp/site/public");
             copy_dir_contents_to_static("tmp/site/dist");
             fs::remove_dir_all("tmp/site").unwrap();
