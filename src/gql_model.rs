@@ -374,18 +374,14 @@ impl Deployment {
     /// Updates the node's status, keeping a record of status history
     pub fn update_status(&mut self, new_status: &ApplicationStatus) {
         // Only update the status if it is actually new
-        if *new_status != self.status.0 {
-            match self.status.0 {
-                ApplicationStatus::DestructionRequested
-                | ApplicationStatus::UpdateRequested
-                | ApplicationStatus::DeploymentRequested => {
-                    return;
-                }
-                _ => {
-                    self.status_history.push(self.status.clone());
-                    self.status = (new_status.clone(), SystemTime::now());
-                }
-            }
+        if *new_status != self.status.0
+            && (*new_status != ApplicationStatus::Running
+                && (self.status.0 == ApplicationStatus::DestructionRequested
+                    || self.status.0 == ApplicationStatus::UpdateRequested
+                    || self.status.0 == ApplicationStatus::DeploymentRequested))
+        {
+            self.status_history.push(self.status.clone());
+            self.status = (new_status.clone(), SystemTime::now());
         }
     }
 
