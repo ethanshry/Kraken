@@ -295,6 +295,7 @@ impl Executor for OrchestrationExecutor {
                                         "Update on remote for deployment {} detected, redeploying",
                                         &deployment.id
                                     );
+                                    deployment.commit = c;
                                     deployment
                                         .update_status(&ApplicationStatus::DelegatingDestruction);
                                     self.update_deployment_in_db(&deployment);
