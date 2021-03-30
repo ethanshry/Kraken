@@ -95,7 +95,7 @@ impl Database {
                 }
             }
             for (i, v) in priorities.iter().enumerate() {
-                if *v == false {
+                if *v == false && i != 0 {
                     if let Some(p) = n.orchestration_priority {
                         if p < (i as u8) {
                             return p;
