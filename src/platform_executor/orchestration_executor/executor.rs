@@ -252,6 +252,8 @@ impl Executor for OrchestrationExecutor {
                                             }
                                         }
 
+                                        deployment.results_url = curr_node.addr.clone();
+                                        deployment.deployment_url = curr_node.addr.clone();
                                         deployment.node = curr_node.id.clone();
                                         deployment.update_status(&ApplicationStatus::Deploying);
                                         self.update_deployment_in_db(&deployment);
